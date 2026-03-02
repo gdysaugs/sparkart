@@ -12,7 +12,7 @@ export function TopNav() {
   return (
     <header className='top-nav'>
       <div className='top-nav__brand'>
-        <span className='top-nav__title'>Melt AI</span>
+        <span className='top-nav__title'>SparkMotion</span>
       </div>
       <button
         type='button'
@@ -27,20 +27,13 @@ export function TopNav() {
         <span />
       </button>
       <nav id='top-nav-menu' className={`top-nav__links${menuOpen ? ' is-open' : ''}`}>
-        <NavLink to='/' className={({ isActive }) => `top-nav__link${isActive ? ' is-active' : ''}`}>
-          画像
-        </NavLink>
-        <NavLink to='/image' className={({ isActive }) => `top-nav__link${isActive ? ' is-active' : ''}`}>
-          編集
-        </NavLink>
         <NavLink to='/video' className={({ isActive }) => `top-nav__link${isActive ? ' is-active' : ''}`}>
-          動画
+          動画生成
         </NavLink>
         <NavLink to='/purchase' className={({ isActive }) => `top-nav__link${isActive ? ' is-active' : ''}`}>
-          クレジット
+          コイン
         </NavLink>
       </nav>
     </header>
   )
 }
-

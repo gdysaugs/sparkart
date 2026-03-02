@@ -63,8 +63,8 @@ const MIN_DIMENSION = 256
 const MAX_DIMENSION = 3000
 const MIN_CFG = 0
 const MAX_CFG = 10
-const FIXED_FPS = 8
-const DEFAULT_SECONDS = 5
+const FIXED_FPS = 10
+const DEFAULT_SECONDS = 6
 const EIGHT_SECOND_MODE_SECONDS = 8
 const FIXED_SIZE_MULTIPLE = 64
 const FIXED_MAX_LONG_SIDE = 768
@@ -95,15 +95,7 @@ const getSupabaseAdmin = (env: Env) => {
   })
 }
 
-const isGoogleUser = (user: User) => {
-  if (user.app_metadata?.provider === 'google') return true
-  if (Array.isArray(user.identities)) {
-    return user.identities.some((identity) => identity.provider === 'google')
-  }
-  return false
-}
-
-const requireGoogleUser = async (request: Request, env: Env, corsHeaders: HeadersInit) => {
+const requireAuthenticatedUser = async (request: Request, env: Env, corsHeaders: HeadersInit) => {
   const token = extractBearerToken(request)
   if (!token) {
     return { response: jsonResponse({ error: 'ログインが必要です。' }, 401, corsHeaders) }
@@ -121,9 +113,6 @@ const requireGoogleUser = async (request: Request, env: Env, corsHeaders: Header
   const { data, error } = await admin.auth.getUser(token)
   if (error || !data?.user) {
     return { response: jsonResponse({ error: '認証に失敗しました。' }, 401, corsHeaders) }
-  }
-  if (!isGoogleUser(data.user)) {
-    return { response: jsonResponse({ error: 'Googleログインのみ対応しています。' }, 403, corsHeaders) }
   }
   return { admin, user: data.user }
 }
@@ -406,6 +395,37 @@ const resolveTicketCostForUsage = async (
   return ticketCostForSeconds(seconds)
 }
 
+const ensureUsageOwnership = async (
+  admin: ReturnType<typeof createClient>,
+  user: User,
+  usageId: string,
+  corsHeaders: HeadersInit,
+) => {
+  const { data: chargeEvent, error: chargeError } = await admin
+    .from('ticket_events')
+    .select('user_id, email')
+    .eq('usage_id', usageId)
+    .maybeSingle()
+
+  if (chargeError) {
+    return { response: jsonResponse({ error: chargeError.message }, 500, corsHeaders) }
+  }
+  if (!chargeEvent) {
+    return { response: jsonResponse({ error: 'Job not found.' }, 404, corsHeaders) }
+  }
+
+  const email = user.email ?? ''
+  const chargeUserId = chargeEvent.user_id ? String(chargeEvent.user_id) : ''
+  const chargeEmail = chargeEvent.email ? String(chargeEvent.email) : ''
+  const matchesUser = Boolean(chargeUserId && chargeUserId === user.id)
+  const matchesEmail = Boolean(email && chargeEmail && chargeEmail.toLowerCase() === email.toLowerCase())
+  if (!matchesUser && !matchesEmail) {
+    return { response: jsonResponse({ error: 'Job not found.' }, 404, corsHeaders) }
+  }
+
+  return { ok: true as const }
+}
+
 const hasOutputList = (value: unknown) => Array.isArray(value) && value.length > 0
 
 const hasOutputString = (value: unknown) => typeof value === 'string' && value.trim() !== ''
@@ -486,10 +506,7 @@ const estimateBase64Bytes = (value: string) => {
   return Math.max(0, Math.floor((trimmed.length * 3) / 4) - padding)
 }
 
-const normalizeSeconds = (value: unknown) => {
-  const parsed = Math.floor(Number(value))
-  return parsed === EIGHT_SECOND_MODE_SECONDS ? EIGHT_SECOND_MODE_SECONDS : DEFAULT_SECONDS
-}
+const normalizeSeconds = (_value: unknown) => DEFAULT_SECONDS
 
 const ticketCostForSeconds = (seconds: number) =>
   seconds === EIGHT_SECOND_MODE_SECONDS ? EIGHT_SECOND_MODE_TICKET_COST : BASE_VIDEO_TICKET_COST
@@ -583,7 +600,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     return new Response(null, { status: 403, headers: corsHeaders })
   }
 
-  const auth = await requireGoogleUser(request, env, corsHeaders)
+  const auth = await requireAuthenticatedUser(request, env, corsHeaders)
   if ('response' in auth) {
     return auth.response
   }
@@ -601,6 +618,12 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   if (!endpoint) {
     return jsonResponse({ error: 'RUNPOD_WAN_REMIX_ENDPOINT_URL is not set.' }, 500, corsHeaders)
   }
+  const ownershipUsageId = `wan_remix:${id}`
+  const ownership = await ensureUsageOwnership(auth.admin, auth.user, ownershipUsageId, corsHeaders)
+  if ('response' in ownership) {
+    return ownership.response
+  }
+
   const upstream = await fetch(`${endpoint}/status/${encodeURIComponent(id)}`, {
     headers: { Authorization: `Bearer ${env.RUNPOD_API_KEY}` },
   })
@@ -669,7 +692,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return new Response(null, { status: 403, headers: corsHeaders })
   }
 
-  const auth = await requireGoogleUser(request, env, corsHeaders)
+  const auth = await requireAuthenticatedUser(request, env, corsHeaders)
   if ('response' in auth) {
     return auth.response
   }

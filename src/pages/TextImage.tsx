@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { GuestIntro } from '../components/GuestIntro'
@@ -255,7 +255,7 @@ export function TextImage() {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setTicketStatus('error')
-      setTicketMessage(data?.error || 'クレジットの取得に失敗しました。')
+      setTicketMessage(data?.error || 'コインの取得に失敗しました。')
       setTicketCount(null)
       return null
     }
@@ -305,7 +305,7 @@ export function TextImage() {
         const message = normalizeErrorMessage(rawMessage)
         if (isTicketShortage(res.status, message)) {
           setShowTicketModal(true)
-          setStatusMessage('クレジット不足')
+          setStatusMessage('コイン不足')
           throw new Error('TICKET_SHORTAGE')
         }
         setErrorModalMessage(message)
@@ -338,7 +338,7 @@ export function TextImage() {
         const message = normalizeErrorMessage(rawMessage)
         if (isTicketShortage(res.status, message)) {
           setShowTicketModal(true)
-          setStatusMessage('クレジット不足')
+          setStatusMessage('コイン不足')
           throw new Error('TICKET_SHORTAGE')
         }
         setErrorModalMessage(message)
@@ -385,8 +385,8 @@ export function TextImage() {
       } catch (error) {
         const message = normalizeErrorMessage(error instanceof Error ? error.message : error)
         if (message === 'TICKET_SHORTAGE') {
-          setResult({ id: makeId(), status: 'error', error: 'クレジット不足' })
-          setStatusMessage('クレジット不足')
+          setResult({ id: makeId(), status: 'error', error: 'コイン不足' })
+          setStatusMessage('コイン不足')
         } else {
           setResult({ id: makeId(), status: 'error', error: message })
           setStatusMessage(message)
@@ -402,22 +402,22 @@ export function TextImage() {
   const handleGenerate = async () => {
     if (isRunning || !canGenerate) return
     if (!session) {
-      setStatusMessage('Googleでログインしてください。')
+      setStatusMessage('ログインしてください。')
       return
     }
     if (ticketStatus === 'loading') {
-      setStatusMessage('クレジットを確認中...')
+      setStatusMessage('コインを確認中...')
       return
     }
     if (accessToken) {
-      setStatusMessage('クレジットを確認中...')
+      setStatusMessage('コインを確認中...')
       const latestCount = await fetchTickets(accessToken)
       if (latestCount !== null && latestCount < IMAGE_TICKET_COST) {
         setShowTicketModal(true)
         return
       }
     } else if (ticketCount === null) {
-      setStatusMessage('クレジットを確認中...')
+      setStatusMessage('コインを確認中...')
       return
     } else if (ticketCount < IMAGE_TICKET_COST) {
       setShowTicketModal(true)
@@ -447,6 +447,10 @@ export function TextImage() {
       return
     }
     window.alert('OAuth URLの取得に失敗しました。')
+  }
+
+  const handleEmailLoginNavigate = () => {
+    navigate('/email-login')
   }
 
   const handleDownload = useCallback(async () => {
@@ -486,9 +490,9 @@ export function TextImage() {
 
   if (!session) {
     return (
-      <div className='camera-app'>
+      <div className='camera-app camera-app--guest'>
         <TopNav />
-        <GuestIntro mode='image' onSignIn={handleGoogleSignIn} />
+        <GuestIntro mode='image' onSignIn={handleGoogleSignIn} onEmailLogin={handleEmailLoginNavigate} />
       </div>
     )
   }
@@ -496,30 +500,44 @@ export function TextImage() {
   return (
     <div className='camera-app'>
       <TopNav />
-      <div className='wizard-shell'>
-        <section className='wizard-panel wizard-panel--inputs'>
-          <div className='wizard-card wizard-card--step'>
-            <div className='wizard-stepper'>
-              <div className='wizard-status'>
-                {ticketStatus === 'loading' && 'クレジットを確認中...'}
-                {ticketStatus !== 'loading' && `クレジット: ${ticketCount ?? 0}`}
-                {ticketStatus === 'error' && ticketMessage ? ` / ${ticketMessage}` : ''}
-              </div>
-              <h2>テキストから画像を生成</h2>
-            </div>
+      <main className='forge-shell'>
+        <section className='forge-command'>
+          <header className='forge-command__head'>
+            <p className='forge-command__kicker'>Image Forge</p>
+            <h1>One Prompt. One Shot. One Visual.</h1>
+            <p className='forge-command__lead'>
+              キーワードを整理して入力すると、ここでリアル画像をすぐ確認できます。生成は1回ごとに1コイン消費します。
+            </p>
+          </header>
 
-            <label className='wizard-field'>
-              <span>プロンプト</span>
+          <div className='forge-metrics' role='status' aria-live='polite'>
+            <div className='forge-metric'>
+              <span>Credits</span>
+              <strong>{ticketStatus === 'loading' ? '...' : ticketCount ?? 0}</strong>
+            </div>
+            <div className='forge-metric'>
+              <span>Cost</span>
+              <strong>{IMAGE_TICKET_COST} / image</strong>
+            </div>
+            <div className='forge-metric'>
+              <span>Prompt</span>
+              <strong>{prompt.trim().length} chars</strong>
+            </div>
+          </div>
+
+          <div className='forge-input-grid'>
+            <label className='forge-input'>
+              <span>Prompt</span>
               <textarea
-                rows={4}
+                rows={5}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder='作りたい画像の内容を入力してください。'
               />
             </label>
 
-            <label className='wizard-field'>
-              <span>ネガティブプロンプト</span>
+            <label className='forge-input forge-input--sub'>
+              <span>Negative Prompt</span>
               <textarea
                 rows={3}
                 value={negativePrompt}
@@ -527,56 +545,79 @@ export function TextImage() {
                 placeholder='任意: 避けたい内容を入力。'
               />
             </label>
+          </div>
 
-            <div className='wizard-actions'>
-              <button type='button' className='primary-button' onClick={handleGenerate} disabled={isRunning || !canGenerate}>
-                {isRunning ? 'Generating...' : '生成'}
+          <div className='forge-toolbar'>
+            <button
+              type='button'
+              className='primary-button primary-button--shimmer'
+              onClick={handleGenerate}
+              disabled={isRunning || !canGenerate}
+            >
+              {isRunning ? 'Generating...' : '画像を生成'}
+            </button>
+            <button
+              type='button'
+              className='ghost-button'
+              onClick={() => {
+                setPrompt('')
+                setNegativePrompt('')
+                setStatusMessage('')
+              }}
+              disabled={isRunning || (!prompt && !negativePrompt)}
+            >
+              クリア
+            </button>
+            <span className='forge-toolbar__status'>
+              {ticketStatus === 'error' && ticketMessage ? ticketMessage : statusMessage || (isRunning ? '生成中...' : '準備完了')}
+            </span>
+          </div>
+        </section>
+
+        <section className='forge-stage'>
+          <div className='forge-stage__header'>
+            <div>
+              <p className='forge-stage__kicker'>Output</p>
+              <h2>Live Canvas</h2>
+            </div>
+            {displayImage && (
+              <button type='button' className='ghost-button' onClick={handleDownload}>
+                保存
               </button>
-            </div>
+            )}
           </div>
-        </section>
 
-        <section className='wizard-panel wizard-panel--preview'>
-          <div className='wizard-card wizard-card--preview'>
-            <div className='wizard-card__header'>
-              <div>
-                <p className='wizard-eyebrow'>生成結果</p>
-                {statusMessage && !isRunning && <span>{statusMessage}</span>}
-              </div>
-              {displayImage && (
-                <button type='button' className='ghost-button' onClick={handleDownload}>
-                  保存
-                </button>
-              )}
-            </div>
-
-            <div className='stage-viewer' style={viewerStyle}>
-              <div className='viewer-progress' aria-hidden='true' />
-              {isRunning ? (
-                <div className='loading-display' role='status' aria-live='polite'>
-                  <div className='loading-rings' aria-hidden='true'>
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <span className='loading-blink'>Generating...</span>
-                  <p>処理を実行しています</p>
+          <div className='forge-stage__viewport stage-viewer' style={viewerStyle}>
+            <div className='viewer-progress' aria-hidden='true' />
+            {isRunning ? (
+              <div className='loading-display' role='status' aria-live='polite'>
+                <div className='loading-rings' aria-hidden='true'>
+                  <span />
+                  <span />
+                  <span />
                 </div>
-              ) : displayImage ? (
-                <img src={displayImage} alt='生成結果' />
-              ) : (
-                <div className='stage-placeholder'>プロンプトを入力して生成してください。</div>
-              )}
-            </div>
+                <span className='loading-blink'>Generating...</span>
+                <p>処理を実行しています</p>
+              </div>
+            ) : displayImage ? (
+              <img src={displayImage} alt='生成結果' />
+            ) : (
+              <div className='stage-placeholder'>プロンプトを入力して生成してください。</div>
+            )}
+          </div>
+
+          <div className='forge-stage__meta'>
+            <span>{FIXED_WIDTH} x {FIXED_HEIGHT}</span>
+            <span>steps {FIXED_STEPS}</span>
+            <span>cfg {FIXED_CFG}</span>
           </div>
         </section>
-      </div>
-
+      </main>
       {showTicketModal && (
         <div className='modal-overlay' role='dialog' aria-modal='true'>
           <div className='modal-card'>
-            <h3>クレジット不足</h3>
-            <p>画像生成は1クレジット必要です。購入ページへ移動しますか？</p>
+            <h3>コイン不足</h3>
+            <p>画像生成は1コイン必要です。購入ページへ移動しますか？</p>
             <div className='modal-actions'>
               <button type='button' className='ghost-button' onClick={() => setShowTicketModal(false)}>
                 閉じる
@@ -605,4 +646,6 @@ export function TextImage() {
     </div>
   )
 }
+
+
 

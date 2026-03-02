@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { isAuthConfigured, supabase } from '../lib/supabaseClient'
+import { isAuthConfigured, signOutSafely, supabase } from '../lib/supabaseClient'
 import { PURCHASE_PLANS } from '../lib/purchasePlans'
 import { getOAuthRedirectUrl } from '../lib/oauthRedirect'
 import { TopNav } from '../components/TopNav'
@@ -78,7 +78,7 @@ export function Purchase() {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setTicketStatus('error')
-      setTicketMessage(data?.error || 'クレジット取得に失敗しました。')
+      setTicketMessage(data?.error || 'コイン取得に失敗しました。')
       setTicketCount(null)
       return
     }
@@ -97,7 +97,7 @@ export function Purchase() {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setBonusStatus('error')
-      setBonusMessage(data?.error || 'デイリーボーナス状態の取得に失敗しました。')
+      setBonusMessage(data?.error || 'ログインボーナス状態の取得に失敗しました。')
       return
     }
     setBonusStatus('idle')
@@ -147,12 +147,17 @@ export function Purchase() {
 
   const handleSignOut = async () => {
     if (!supabase) return
-    try {
-      await supabase.auth.signOut({ scope: 'local' })
-    } catch (error) {
-      setAuthStatus('error')
-      setAuthMessage(error instanceof Error ? error.message : 'ログアウトに失敗しました。')
-    }
+    await signOutSafely()
+    setSession(null)
+    setTicketCount(null)
+    setTicketStatus('idle')
+    setTicketMessage('')
+    setBonusStatus('idle')
+    setBonusMessage('')
+    setBonusCanClaim(false)
+    setBonusNextEligibleAt(null)
+    setAuthStatus('idle')
+    setAuthMessage('')
   }
 
   const handleCheckout = async (priceId: string) => {
@@ -200,7 +205,7 @@ export function Purchase() {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setBonusStatus('error')
-      setBonusMessage(data?.error || 'デイリーボーナスの受取に失敗しました。')
+      setBonusMessage(data?.error || 'ログインボーナスの受取に失敗しました。')
       setBonusClaiming(false)
       return
     }
@@ -218,7 +223,7 @@ export function Purchase() {
         await fetchTickets(accessToken)
       }
       setBonusStatus('idle')
-      setBonusMessage('デイリーボーナスを受け取りました。（+3）')
+      setBonusMessage('ログインボーナスを受け取りました。（+15）')
     } else {
       setBonusStatus('idle')
       setBonusMessage(
@@ -266,13 +271,13 @@ export function Purchase() {
           {session && (
             <>
               <div className="ticket-message">
-                {ticketStatus === 'loading' && 'クレジット確認中...'}
-                {ticketStatus !== 'loading' && `クレジット残り: ${ticketCount ?? 0}`}
+                {ticketStatus === 'loading' && 'コイン確認中...'}
+                {ticketStatus !== 'loading' && `あなたの残りコイン保有数${ticketCount ?? 0}枚`}
                 {ticketStatus === 'error' && ticketMessage ? ` / ${ticketMessage}` : ''}
               </div>
               <div className="daily-bonus">
                 <div className="daily-bonus__meta">
-                  <strong>ログインボーナス（+3）</strong>
+                  <strong>ログインボーナス（+15）</strong>
                   {bonusStatus === 'loading' && <span>状態を確認中...</span>}
                   {bonusStatus !== 'loading' && bonusCanClaim && <span>今すぐ受け取れます</span>}
                   {bonusStatus !== 'loading' && !bonusCanClaim && bonusNextEligibleAt && (
@@ -296,7 +301,7 @@ export function Purchase() {
         <section className="purchase-panel">
           <div className="panel-header">
             <div className="panel-title">
-              <h2>クレジット購入</h2>
+              <h2>コイン購入</h2>
               <span>好きなパックを購入。</span>
             </div>
           </div>
@@ -305,7 +310,7 @@ export function Purchase() {
               <div key={plan.id} className="plan-card">
                 <div>
                   <div className="plan-label">{plan.label}</div>
-                  <div className="plan-tickets">{plan.tickets} クレジット</div>
+                  <div className="plan-tickets">{plan.tickets} コイン</div>
                 </div>
                 <div className="plan-price">¥{plan.price.toLocaleString()}</div>
                 <button

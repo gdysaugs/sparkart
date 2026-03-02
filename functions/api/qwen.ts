@@ -118,15 +118,7 @@ const getSupabaseAdmin = (env: Env) => {
   })
 }
 
-const isGoogleUser = (user: User) => {
-  if (user.app_metadata?.provider === 'google') return true
-  if (Array.isArray(user.identities)) {
-    return user.identities.some((identity) => identity.provider === 'google')
-  }
-  return false
-}
-
-const requireGoogleUser = async (request: Request, env: Env, corsHeaders: HeadersInit) => {
+const requireAuthenticatedUser = async (request: Request, env: Env, corsHeaders: HeadersInit) => {
   const token = extractBearerToken(request)
   if (!token) {
     return { response: jsonResponse({ error: 'Login is required.' }, 401, corsHeaders) }
@@ -144,9 +136,6 @@ const requireGoogleUser = async (request: Request, env: Env, corsHeaders: Header
   const { data, error } = await admin.auth.getUser(token)
   if (error || !data?.user) {
     return { response: jsonResponse({ error: 'Authentication failed.' }, 401, corsHeaders) }
-  }
-  if (!isGoogleUser(data.user)) {
-    return { response: jsonResponse({ error: 'Google login is required.' }, 403, corsHeaders) }
   }
   return { admin, user: data.user }
 }
@@ -620,7 +609,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   }
   try {
 
-  const auth = await requireGoogleUser(request, env, corsHeaders)
+  const auth = await requireAuthenticatedUser(request, env, corsHeaders)
   if ('response' in auth) {
     return auth.response
   }
@@ -725,7 +714,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
   try {
 
-  const auth = await requireGoogleUser(request, env, corsHeaders)
+  const auth = await requireAuthenticatedUser(request, env, corsHeaders)
   if ('response' in auth) {
     return auth.response
   }

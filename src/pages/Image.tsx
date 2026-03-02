@@ -1,4 +1,4 @@
-﻿import {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -309,7 +309,7 @@ export function Image() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setTicketStatus('error')
-        setTicketMessage(data?.error || 'クレジットの取得に失敗しました。')
+        setTicketMessage(data?.error || 'コインの取得に失敗しました。')
         setTicketCount(null)
         return null
       }
@@ -362,7 +362,7 @@ export function Image() {
         const message = normalizeErrorMessage(rawMessage)
         if (isTicketShortage(res.status, message)) {
           setShowTicketModal(true)
-          setStatusMessage('クレジット不足')
+          setStatusMessage('コイン不足')
           throw new Error('TICKET_SHORTAGE')
         }
         setErrorModalMessage(message)
@@ -396,7 +396,7 @@ export function Image() {
         const message = normalizeErrorMessage(rawMessage)
         if (isTicketShortage(res.status, message)) {
           setShowTicketModal(true)
-          setStatusMessage('クレジット不足')
+          setStatusMessage('コイン不足')
           throw new Error('TICKET_SHORTAGE')
         }
         setErrorModalMessage(message)
@@ -443,8 +443,8 @@ export function Image() {
       } catch (error) {
         const message = normalizeErrorMessage(error instanceof Error ? error.message : error)
         if (message === 'TICKET_SHORTAGE') {
-          setResult({ id: makeId(), status: 'error', error: 'クレジット不足' })
-          setStatusMessage('クレジット不足')
+          setResult({ id: makeId(), status: 'error', error: 'コイン不足' })
+          setStatusMessage('コイン不足')
         } else {
           setResult({ id: makeId(), status: 'error', error: message })
           setStatusMessage(message)
@@ -460,22 +460,22 @@ export function Image() {
   const handleGenerate = async () => {
     if (!sourcePayload || isRunning) return
     if (!session) {
-      setStatusMessage('Googleでログインしてください。')
+      setStatusMessage('ログインしてください。')
       return
     }
     if (ticketStatus === 'loading') {
-      setStatusMessage('クレジットを確認中...')
+      setStatusMessage('コインを確認中...')
       return
     }
     if (accessToken) {
-      setStatusMessage('クレジットを確認中...')
+      setStatusMessage('コインを確認中...')
       const latestCount = await fetchTickets(accessToken)
       if (latestCount !== null && latestCount < IMAGE_TICKET_COST) {
         setShowTicketModal(true)
         return
       }
     } else if (ticketCount === null) {
-      setStatusMessage('クレジットを確認中...')
+      setStatusMessage('コインを確認中...')
       return
     } else if (ticketCount < IMAGE_TICKET_COST) {
       setShowTicketModal(true)
@@ -502,6 +502,10 @@ export function Image() {
       return
     }
     window.alert('OAuth URLの取得に失敗しました。')
+  }
+
+  const handleEmailLoginNavigate = () => {
+    navigate('/email-login')
   }
 
   const clearImage = () => {
@@ -572,7 +576,7 @@ export function Image() {
     return (
       <div className="camera-app">
         <TopNav />
-        <GuestIntro mode="image" onSignIn={handleGoogleSignIn} />
+        <GuestIntro mode="image" onSignIn={handleGoogleSignIn} onEmailLogin={handleEmailLoginNavigate} />
       </div>
     )
   }
@@ -585,8 +589,8 @@ export function Image() {
           <div className="wizard-card wizard-card--step">
             <div className="wizard-stepper">
               <div className="wizard-status">
-                {ticketStatus === 'loading' && 'クレジットを確認中...'}
-                {ticketStatus !== 'loading' && `クレジット: ${ticketCount ?? 0}`}
+                {ticketStatus === 'loading' && 'コインを確認中...'}
+                {ticketStatus !== 'loading' && `コイン: ${ticketCount ?? 0}`}
                 {ticketStatus === 'error' && ticketMessage ? ` / ${ticketMessage}` : ''}
               </div>
               <h2>画像編集</h2>
@@ -677,8 +681,8 @@ export function Image() {
       {showTicketModal && (
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal-card">
-            <h3>クレジット不足</h3>
-            <p>画像生成は1クレジット必要です。購入ページへ移動しますか？</p>
+            <h3>コイン不足</h3>
+            <p>画像生成は1コイン必要です。購入ページへ移動しますか？</p>
             <div className="modal-actions">
               <button type="button" className="ghost-button" onClick={() => setShowTicketModal(false)}>
                 閉じる

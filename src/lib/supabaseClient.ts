@@ -24,3 +24,59 @@ const supabaseAnonKey = normalizeEnvString(import.meta.env.VITE_SUPABASE_ANON_KE
 
 export const isAuthConfigured = Boolean(supabaseUrl && supabaseAnonKey)
 export const supabase = isAuthConfigured ? createClient(supabaseUrl, supabaseAnonKey) : null
+
+function getSupabaseProjectRef(url: string): string {
+  if (!url) return ''
+  try {
+    const hostname = new URL(url).hostname
+    const first = hostname.split('.')[0] ?? ''
+    return first.trim()
+  } catch {
+    return ''
+  }
+}
+
+function clearSupabaseBrowserStorage() {
+  if (typeof window === 'undefined') return
+
+  const projectRef = getSupabaseProjectRef(supabaseUrl)
+  const prefixes = projectRef ? [`sb-${projectRef}-`, 'supabase.auth.token'] : ['sb-', 'supabase.auth.token']
+  const storages: Storage[] = []
+
+  try {
+    storages.push(window.localStorage)
+  } catch {
+    // ignore
+  }
+  try {
+    storages.push(window.sessionStorage)
+  } catch {
+    // ignore
+  }
+
+  for (const storage of storages) {
+    const toRemove: string[] = []
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i)
+      if (!key) continue
+      if (prefixes.some((prefix) => key.startsWith(prefix))) {
+        toRemove.push(key)
+      }
+    }
+    for (const key of toRemove) {
+      storage.removeItem(key)
+    }
+  }
+}
+
+export async function signOutSafely(): Promise<void> {
+  if (!supabase) return
+  try {
+    const { error } = await supabase.auth.signOut({ scope: 'local' })
+    if (error) throw error
+  } catch {
+    // If Supabase returns 403 on logout, still clear browser-side session keys.
+  } finally {
+    clearSupabaseBrowserStorage()
+  }
+}

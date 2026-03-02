@@ -1,0 +1,10 @@
+.git
+__pycache__/
+*.pyc
+.DS_Store
+models/**
+!models/checkpoints/
+!models/checkpoints/WAN/
+!models/checkpoints/WAN/wan2.2-i2v-rapid-aio.safetensors
+!models/clip_vision/
+!models/clip_vision/clip-vision_vit-h.safetensors

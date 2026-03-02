@@ -3,9 +3,10 @@ type CorsEnv = {
 }
 
 const DEFAULT_ALLOWED_ORIGINS = [
-  'https://meteoras.org',
-  'https://zimage-94b.pages.dev',
-  '*.zimage-94b.pages.dev',
+  'https://sparkmotion.work',
+  'https://www.sparkmotion.work',
+  'https://ltx2.pages.dev',
+  '*.ltx2.pages.dev',
 ]
 
 const normalize = (value: string) => value.trim().toLowerCase()

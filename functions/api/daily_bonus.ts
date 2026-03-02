@@ -1,4 +1,4 @@
-import { createClient, type User } from '@supabase/supabase-js'
+﻿import { createClient, type User } from '@supabase/supabase-js'
 import { buildCorsHeaders, isCorsBlocked } from '../_shared/cors'
 
 type Env = {
@@ -45,6 +45,10 @@ const getSupabaseAdmin = (env: Env) => {
   })
 }
 
+const makeUsageId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
 const fetchTicketRow = async (admin: ReturnType<typeof createClient>, user: User) => {
   const email = user.email
   const { data: byUser, error: userError } = await admin
@@ -100,10 +104,7 @@ const ensureTicketRow = async (admin: ReturnType<typeof createClient>, user: Use
     return { data: retry, error: null, created: false }
   }
 
-  const usageId =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  const usageId = makeUsageId()
   await admin.from('ticket_events').insert({
     usage_id: usageId,
     email,
@@ -231,6 +232,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return jsonResponse({ error: 'メールアドレスが取得できません。' }, 400, corsHeaders)
   }
 
+  const { data: ticketRow, error: ticketError } = await ensureTicketRow(auth.admin, auth.user)
+  if (ticketError) {
+    return jsonResponse({ error: ticketError.message }, 500, corsHeaders)
+  }
+  if (!ticketRow) {
+    return jsonResponse({ error: 'No ticket row.' }, 500, corsHeaders)
+  }
+
   const { data, error } = await auth.admin.rpc('claim_daily_bonus', {
     p_email: email,
     p_user_id: auth.user.id,
@@ -246,16 +255,98 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   const nextEligibleAt = (result as { next_eligible_at?: string }).next_eligible_at ?? null
   const granted = Boolean((result as { granted?: unknown }).granted)
-  const ticketsLeft = Number((result as { tickets_left?: unknown }).tickets_left)
+  const rpcTicketsLeft = Number((result as { tickets_left?: unknown }).tickets_left)
+  let normalizedTicketsLeft: number | null = Number.isFinite(rpcTicketsLeft) ? rpcTicketsLeft : null
+  const awarded = granted ? 1 : 0
+
+  if (granted) {
+    const targetTickets = Math.max(0, Math.floor(Number(ticketRow.tickets ?? 0)) + awarded)
+
+    if (typeof normalizedTicketsLeft === 'number' && normalizedTicketsLeft !== targetTickets) {
+      if (normalizedTicketsLeft > targetTickets) {
+        const adjustDown = normalizedTicketsLeft - targetTickets
+        if (adjustDown > 0) {
+          const { data: consumeData } = await auth.admin.rpc('consume_tickets', {
+            p_ticket_id: ticketRow.id,
+            p_usage_id: `daily_bonus_adjust_down:${makeUsageId()}`,
+            p_cost: adjustDown,
+            p_reason: 'daily_bonus_adjust',
+            p_metadata: { source: 'daily_bonus', fixed_award: 1 },
+          })
+          const consumeResult = Array.isArray(consumeData) ? consumeData[0] : consumeData
+          const consumedTickets = Number((consumeResult as { tickets_left?: unknown })?.tickets_left)
+          if (Number.isFinite(consumedTickets)) {
+            normalizedTicketsLeft = consumedTickets
+          }
+        }
+      } else if (normalizedTicketsLeft < targetTickets) {
+        const adjustUp = targetTickets - normalizedTicketsLeft
+        if (adjustUp > 0) {
+          const { data: grantData } = await auth.admin.rpc('grant_tickets', {
+            p_usage_id: `daily_bonus_adjust_up:${makeUsageId()}`,
+            p_user_id: auth.user.id,
+            p_email: email,
+            p_amount: adjustUp,
+            p_reason: 'daily_bonus_adjust',
+            p_metadata: { source: 'daily_bonus', fixed_award: 1 },
+          })
+          const grantResult = Array.isArray(grantData) ? grantData[0] : grantData
+          const grantedTickets = Number((grantResult as { tickets_left?: unknown })?.tickets_left)
+          if (Number.isFinite(grantedTickets)) {
+            normalizedTicketsLeft = grantedTickets
+          }
+        }
+      }
+    }
+
+    if (!Number.isFinite(normalizedTicketsLeft)) {
+      const latest = await fetchTicketRow(auth.admin, auth.user)
+      if (latest.data) {
+        const latestTickets = Number(latest.data.tickets)
+        normalizedTicketsLeft = Number.isFinite(latestTickets) ? latestTickets : targetTickets
+      } else {
+        normalizedTicketsLeft = targetTickets
+      }
+    }
+
+    const latestAfterAdjust = await fetchTicketRow(auth.admin, auth.user)
+    if (latestAfterAdjust.data) {
+      const latestTickets = Number(latestAfterAdjust.data.tickets)
+      if (Number.isFinite(latestTickets) && latestTickets !== targetTickets) {
+        const nowIso = new Date().toISOString()
+        const { data: forcedTicketRow } = await auth.admin
+          .from('user_tickets')
+          .update({ tickets: targetTickets, updated_at: nowIso })
+          .eq('id', ticketRow.id)
+          .eq('tickets', latestTickets)
+          .select('tickets')
+          .maybeSingle()
+        if (forcedTicketRow) {
+          const forcedTickets = Number((forcedTicketRow as { tickets?: unknown }).tickets)
+          normalizedTicketsLeft = Number.isFinite(forcedTickets) ? forcedTickets : targetTickets
+        } else {
+          normalizedTicketsLeft = latestTickets
+        }
+      } else if (Number.isFinite(latestTickets)) {
+        normalizedTicketsLeft = latestTickets
+      }
+    }
+  }
+
+  const safeTicketsLeft = typeof normalizedTicketsLeft === 'number' && Number.isFinite(normalizedTicketsLeft)
+    ? normalizedTicketsLeft
+    : null
 
   return jsonResponse(
     {
       granted,
-      ticketsLeft: Number.isFinite(ticketsLeft) ? ticketsLeft : null,
+      ticketsLeft: safeTicketsLeft,
       nextEligibleAt,
+      awarded,
       message: (result as { message?: string }).message ?? null,
     },
     200,
     corsHeaders,
   )
 }
+

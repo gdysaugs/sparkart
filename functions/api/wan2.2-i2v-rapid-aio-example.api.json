@@ -1,0 +1,153 @@
+﻿{
+    "1":  {
+              "class_type":  "CheckpointLoaderSimple",
+              "inputs":  {
+                             "ckpt_name":  "WAN\\wan2.2-i2v-rapid-aio.safetensors"
+                         }
+          },
+    "2":  {
+              "class_type":  "ModelSamplingSD3",
+              "inputs":  {
+                             "model":  [
+                                           "1",
+                                           0
+                                       ],
+                             "shift":  8.0000000000000018
+                         }
+          },
+    "3":  {
+              "class_type":  "KSampler",
+              "inputs":  {
+                             "model":  [
+                                           "2",
+                                           0
+                                       ],
+                             "positive":  [
+                                              "9",
+                                              0
+                                          ],
+                             "negative":  [
+                                              "9",
+                                              1
+                                          ],
+                             "latent_image":  [
+                                                  "9",
+                                                  2
+                                              ],
+                             "seed":  192054346835137,
+                             "control_after_generate":  "fixed",
+                             "steps":  4,
+                             "cfg":  1,
+                             "sampler_name":  "sa_solver",
+                             "scheduler":  "beta",
+                             "denoise":  1
+                         }
+          },
+    "4":  {
+              "class_type":  "CLIPTextEncode",
+              "inputs":  {
+                             "clip":  [
+                                          "1",
+                                          1
+                                      ],
+                             "text":  ""
+                         }
+          },
+    "5":  {
+              "class_type":  "CLIPTextEncode",
+              "inputs":  {
+                             "clip":  [
+                                          "1",
+                                          1
+                                      ],
+                             "text":  "a ninja sneaking down a hallway, then pulling out a pink unicorn toy."
+                         }
+          },
+    "7":  {
+              "class_type":  "VAEDecode",
+              "inputs":  {
+                             "samples":  [
+                                             "3",
+                                             0
+                                         ],
+                             "vae":  [
+                                         "1",
+                                         2
+                                     ]
+                         }
+          },
+    "8":  {
+              "class_type":  "VHS_VideoCombine",
+              "inputs":  {
+                             "images":  [
+                                            "7",
+                                            0
+                                        ],
+                             "frame_rate":  24,
+                             "loop_count":  0,
+                             "filename_prefix":  "AnimateDiff",
+                             "format":  "video/h264-mp4",
+                             "pix_fmt":  "yuv420p",
+                             "crf":  19,
+                             "save_metadata":  true,
+                             "trim_to_audio":  false,
+                             "pingpong":  false,
+                             "save_output":  true
+                         }
+          },
+    "9":  {
+              "class_type":  "WanImageToVideo",
+              "inputs":  {
+                             "positive":  [
+                                              "5",
+                                              0
+                                          ],
+                             "negative":  [
+                                              "4",
+                                              0
+                                          ],
+                             "vae":  [
+                                         "1",
+                                         2
+                                     ],
+                             "clip_vision_output":  [
+                                                        "11",
+                                                        0
+                                                    ],
+                             "start_image":  [
+                                                 "10",
+                                                 0
+                                             ],
+                             "width":  640,
+                             "height":  640,
+                             "length":  81,
+                             "batch_size":  1
+                         }
+          },
+    "10":  {
+               "class_type":  "LoadImage",
+               "inputs":  {
+                              "image":  "ComfyUI_temp_zmuag_00002_.png"
+                          }
+           },
+    "11":  {
+               "class_type":  "CLIPVisionEncode",
+               "inputs":  {
+                              "clip_vision":  [
+                                                  "12",
+                                                  0
+                                              ],
+                              "image":  [
+                                            "10",
+                                            0
+                                        ],
+                              "crop":  "center"
+                          }
+           },
+    "12":  {
+               "class_type":  "CLIPVisionLoader",
+               "inputs":  {
+                              "clip_name":  "clip-vision_vit-h.safetensors"
+                          }
+           }
+}

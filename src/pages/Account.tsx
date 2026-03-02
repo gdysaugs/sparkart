@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase } from '../lib/supabaseClient'
+import { signOutSafely, supabase } from '../lib/supabaseClient'
 import './account.css'
 
 export function Account() {
@@ -19,7 +19,8 @@ export function Account() {
 
   const handleSignOut = async () => {
     if (!supabase) return
-    await supabase.auth.signOut({ scope: 'local' })
+    await signOutSafely()
+    setSession(null)
   }
 
   if (!session) {
