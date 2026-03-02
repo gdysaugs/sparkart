@@ -21,6 +21,7 @@ type DailyBonusStateRow = {
 }
 
 const SIGNUP_TICKET_GRANT = 5
+const DAILY_BONUS_AMOUNT = 1
 const BONUS_WAIT_MS = 24 * 60 * 60 * 1000
 const corsMethods = 'GET, POST, OPTIONS'
 
@@ -137,6 +138,158 @@ const calculateInitialEligibleAt = (createdAt: string) => {
   return new Date(createdMs + BONUS_WAIT_MS).toISOString()
 }
 
+const ensureDailyBonusStateRow = async (
+  admin: ReturnType<typeof createClient>,
+  ticketRow: TicketRow,
+  userId: string,
+) => {
+  const initialEligibleAt = calculateInitialEligibleAt(ticketRow.created_at)
+  const nowIso = new Date().toISOString()
+
+  const { error: upsertError } = await admin.from('daily_bonus_state').upsert(
+    {
+      ticket_id: ticketRow.id,
+      email: ticketRow.email,
+      user_id: ticketRow.user_id ?? userId,
+      first_eligible_at: initialEligibleAt,
+      next_eligible_at: initialEligibleAt,
+      updated_at: nowIso,
+    },
+    { onConflict: 'ticket_id', ignoreDuplicates: true },
+  )
+  if (upsertError) {
+    return { data: null, error: upsertError }
+  }
+
+  return fetchDailyBonusState(admin, ticketRow.id)
+}
+
+const claimDailyBonusSlot = async (
+  admin: ReturnType<typeof createClient>,
+  ticketId: string,
+  userId: string,
+  currentNextEligibleAt: string,
+  currentClaimCount: number,
+) => {
+  const nowIso = new Date().toISOString()
+  const nextEligibleAt = new Date(Date.now() + BONUS_WAIT_MS).toISOString()
+  const claimCount = Math.max(0, Math.floor(Number(currentClaimCount || 0)))
+
+  const { data, error } = await admin
+    .from('daily_bonus_state')
+    .update({
+      last_claimed_at: nowIso,
+      next_eligible_at: nextEligibleAt,
+      claim_count: claimCount + 1,
+      user_id: userId,
+      updated_at: nowIso,
+    })
+    .eq('ticket_id', ticketId)
+    .eq('next_eligible_at', currentNextEligibleAt)
+    .select('id')
+
+  if (error) {
+    return { claimed: false, nextEligibleAt: currentNextEligibleAt, error }
+  }
+  const claimed = Array.isArray(data) && data.length > 0
+  return { claimed, nextEligibleAt, error: null as null }
+}
+
+const grantDailyBonusCoin = async (
+  admin: ReturnType<typeof createClient>,
+  ticketRow: TicketRow,
+  user: User,
+  nextEligibleAt: string,
+) => {
+  const usageId = `daily_bonus:${makeUsageId()}`
+  const nowIso = new Date().toISOString()
+  const metadata = {
+    source: 'daily_bonus',
+    claimed_at: nowIso,
+    next_eligible_at: nextEligibleAt,
+    fixed_award: DAILY_BONUS_AMOUNT,
+  }
+
+  const rpcGrant = await admin.rpc('grant_tickets', {
+    p_usage_id: usageId,
+    p_user_id: user.id,
+    p_email: ticketRow.email,
+    p_amount: DAILY_BONUS_AMOUNT,
+    p_reason: 'daily_bonus',
+    p_metadata: metadata,
+  })
+
+  if (!rpcGrant.error) {
+    const grantResult = Array.isArray(rpcGrant.data) ? rpcGrant.data[0] : rpcGrant.data
+    const rpcTicketsLeft = Number((grantResult as { tickets_left?: unknown })?.tickets_left)
+    if (Number.isFinite(rpcTicketsLeft)) {
+      return { ticketsLeft: rpcTicketsLeft, error: null as null }
+    }
+
+    // RPC succeeded but did not return tickets_left in this environment.
+    const latest = await admin
+      .from('user_tickets')
+      .select('tickets')
+      .eq('id', ticketRow.id)
+      .maybeSingle()
+    if (latest.error) {
+      return { ticketsLeft: null, error: latest.error }
+    }
+    const latestTickets = Number((latest.data as { tickets?: unknown } | null)?.tickets)
+    return {
+      ticketsLeft: Number.isFinite(latestTickets)
+        ? latestTickets
+        : Math.max(0, Math.floor(Number(ticketRow.tickets || 0))) + DAILY_BONUS_AMOUNT,
+      error: null as null,
+    }
+  }
+
+  // Fallback: direct update when grant_tickets RPC is missing/mismatched.
+  let currentTickets = Math.max(0, Math.floor(Number(ticketRow.tickets || 0)))
+  for (let i = 0; i < 3; i += 1) {
+    const targetTickets = currentTickets + DAILY_BONUS_AMOUNT
+    const { data: updated, error: updateError } = await admin
+      .from('user_tickets')
+      .update({ tickets: targetTickets, updated_at: nowIso })
+      .eq('id', ticketRow.id)
+      .eq('tickets', currentTickets)
+      .select('tickets')
+      .maybeSingle()
+
+    if (updateError) {
+      return { ticketsLeft: null, error: updateError }
+    }
+
+    if (updated) {
+      await admin.from('ticket_events').insert({
+        usage_id: usageId,
+        email: ticketRow.email,
+        user_id: user.id,
+        delta: DAILY_BONUS_AMOUNT,
+        reason: 'daily_bonus',
+        metadata,
+        created_at: nowIso,
+      })
+      return { ticketsLeft: targetTickets, error: null as null }
+    }
+
+    const { data: freshTicket, error: freshError } = await admin
+      .from('user_tickets')
+      .select('tickets')
+      .eq('id', ticketRow.id)
+      .maybeSingle()
+    if (freshError) {
+      return { ticketsLeft: null, error: freshError }
+    }
+    if (!freshTicket) {
+      return { ticketsLeft: null, error: new Error('No ticket row.') as Error }
+    }
+    currentTickets = Math.max(0, Math.floor(Number((freshTicket as { tickets?: unknown }).tickets || 0)))
+  }
+
+  return { ticketsLeft: null, error: new Error('Failed to grant daily bonus.') as Error }
+}
+
 const isGoogleUser = (user: User) => {
   if (user.app_metadata?.provider === 'google') return true
   if (Array.isArray(user.identities)) {
@@ -240,110 +393,87 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return jsonResponse({ error: 'No ticket row.' }, 500, corsHeaders)
   }
 
-  const { data, error } = await auth.admin.rpc('claim_daily_bonus', {
-    p_email: email,
-    p_user_id: auth.user.id,
-  })
-  if (error) {
-    return jsonResponse({ error: error.message }, 500, corsHeaders)
+  const bonusState = await ensureDailyBonusStateRow(auth.admin, ticketRow, auth.user.id)
+  if (bonusState.error) {
+    return jsonResponse({ error: bonusState.error.message }, 500, corsHeaders)
+  }
+  if (!bonusState.data) {
+    return jsonResponse({ error: 'daily_bonus_state row not found.' }, 500, corsHeaders)
   }
 
-  const result = Array.isArray(data) ? data[0] : data
-  if (!result || typeof result !== 'object') {
-    return jsonResponse({ error: 'claim result is empty.' }, 500, corsHeaders)
+  const nowMs = Date.now()
+  const currentNextEligibleAt = bonusState.data.next_eligible_at ?? calculateInitialEligibleAt(ticketRow.created_at)
+  const nextEligibleMs = new Date(currentNextEligibleAt).getTime()
+  const canClaim = Number.isFinite(nextEligibleMs) ? nowMs >= nextEligibleMs : false
+
+  if (!canClaim) {
+    return jsonResponse(
+      {
+        granted: false,
+        ticketsLeft: ticketRow.tickets,
+        nextEligibleAt: currentNextEligibleAt,
+        awarded: 0,
+        message: 'NOT_ELIGIBLE',
+      },
+      200,
+      corsHeaders,
+    )
   }
 
-  const nextEligibleAt = (result as { next_eligible_at?: string }).next_eligible_at ?? null
-  const granted = Boolean((result as { granted?: unknown }).granted)
-  const rpcTicketsLeft = Number((result as { tickets_left?: unknown }).tickets_left)
-  let normalizedTicketsLeft: number | null = Number.isFinite(rpcTicketsLeft) ? rpcTicketsLeft : null
-  const awarded = granted ? 1 : 0
-
-  if (granted) {
-    const targetTickets = Math.max(0, Math.floor(Number(ticketRow.tickets ?? 0)) + awarded)
-
-    if (typeof normalizedTicketsLeft === 'number' && normalizedTicketsLeft !== targetTickets) {
-      if (normalizedTicketsLeft > targetTickets) {
-        const adjustDown = normalizedTicketsLeft - targetTickets
-        if (adjustDown > 0) {
-          const { data: consumeData } = await auth.admin.rpc('consume_tickets', {
-            p_ticket_id: ticketRow.id,
-            p_usage_id: `daily_bonus_adjust_down:${makeUsageId()}`,
-            p_cost: adjustDown,
-            p_reason: 'daily_bonus_adjust',
-            p_metadata: { source: 'daily_bonus', fixed_award: 1 },
-          })
-          const consumeResult = Array.isArray(consumeData) ? consumeData[0] : consumeData
-          const consumedTickets = Number((consumeResult as { tickets_left?: unknown })?.tickets_left)
-          if (Number.isFinite(consumedTickets)) {
-            normalizedTicketsLeft = consumedTickets
-          }
-        }
-      } else if (normalizedTicketsLeft < targetTickets) {
-        const adjustUp = targetTickets - normalizedTicketsLeft
-        if (adjustUp > 0) {
-          const { data: grantData } = await auth.admin.rpc('grant_tickets', {
-            p_usage_id: `daily_bonus_adjust_up:${makeUsageId()}`,
-            p_user_id: auth.user.id,
-            p_email: email,
-            p_amount: adjustUp,
-            p_reason: 'daily_bonus_adjust',
-            p_metadata: { source: 'daily_bonus', fixed_award: 1 },
-          })
-          const grantResult = Array.isArray(grantData) ? grantData[0] : grantData
-          const grantedTickets = Number((grantResult as { tickets_left?: unknown })?.tickets_left)
-          if (Number.isFinite(grantedTickets)) {
-            normalizedTicketsLeft = grantedTickets
-          }
-        }
-      }
-    }
-
-    if (!Number.isFinite(normalizedTicketsLeft)) {
-      const latest = await fetchTicketRow(auth.admin, auth.user)
-      if (latest.data) {
-        const latestTickets = Number(latest.data.tickets)
-        normalizedTicketsLeft = Number.isFinite(latestTickets) ? latestTickets : targetTickets
-      } else {
-        normalizedTicketsLeft = targetTickets
-      }
-    }
-
-    const latestAfterAdjust = await fetchTicketRow(auth.admin, auth.user)
-    if (latestAfterAdjust.data) {
-      const latestTickets = Number(latestAfterAdjust.data.tickets)
-      if (Number.isFinite(latestTickets) && latestTickets !== targetTickets) {
-        const nowIso = new Date().toISOString()
-        const { data: forcedTicketRow } = await auth.admin
-          .from('user_tickets')
-          .update({ tickets: targetTickets, updated_at: nowIso })
-          .eq('id', ticketRow.id)
-          .eq('tickets', latestTickets)
-          .select('tickets')
-          .maybeSingle()
-        if (forcedTicketRow) {
-          const forcedTickets = Number((forcedTicketRow as { tickets?: unknown }).tickets)
-          normalizedTicketsLeft = Number.isFinite(forcedTickets) ? forcedTickets : targetTickets
-        } else {
-          normalizedTicketsLeft = latestTickets
-        }
-      } else if (Number.isFinite(latestTickets)) {
-        normalizedTicketsLeft = latestTickets
-      }
-    }
+  const claimSlot = await claimDailyBonusSlot(
+    auth.admin,
+    ticketRow.id,
+    auth.user.id,
+    currentNextEligibleAt,
+    bonusState.data.claim_count ?? 0,
+  )
+  if (claimSlot.error) {
+    return jsonResponse({ error: claimSlot.error.message }, 500, corsHeaders)
   }
 
-  const safeTicketsLeft = typeof normalizedTicketsLeft === 'number' && Number.isFinite(normalizedTicketsLeft)
-    ? normalizedTicketsLeft
-    : null
+  if (!claimSlot.claimed) {
+    const latestBonus = await fetchDailyBonusState(auth.admin, ticketRow.id)
+    const latestTickets = await fetchTicketRow(auth.admin, auth.user)
+    return jsonResponse(
+      {
+        granted: false,
+        ticketsLeft: latestTickets.data?.tickets ?? ticketRow.tickets,
+        nextEligibleAt: latestBonus.data?.next_eligible_at ?? currentNextEligibleAt,
+        awarded: 0,
+        message: 'NOT_ELIGIBLE',
+      },
+      200,
+      corsHeaders,
+    )
+  }
+
+  const grant = await grantDailyBonusCoin(auth.admin, ticketRow, auth.user, claimSlot.nextEligibleAt)
+  if (grant.error) {
+    // Best effort rollback so user is not locked out if grant failed.
+    await auth.admin
+      .from('daily_bonus_state')
+      .update({
+        last_claimed_at: bonusState.data.last_claimed_at,
+        next_eligible_at: currentNextEligibleAt,
+        claim_count: bonusState.data.claim_count ?? 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('ticket_id', ticketRow.id)
+      .eq('next_eligible_at', claimSlot.nextEligibleAt)
+    return jsonResponse({ error: grant.error.message }, 500, corsHeaders)
+  }
+
+  const safeTicketsLeft = Number.isFinite(Number(grant.ticketsLeft))
+    ? Number(grant.ticketsLeft)
+    : ticketRow.tickets + DAILY_BONUS_AMOUNT
 
   return jsonResponse(
     {
-      granted,
+      granted: true,
       ticketsLeft: safeTicketsLeft,
-      nextEligibleAt,
-      awarded,
-      message: (result as { message?: string }).message ?? null,
+      nextEligibleAt: claimSlot.nextEligibleAt,
+      awarded: DAILY_BONUS_AMOUNT,
+      message: null,
     },
     200,
     corsHeaders,
