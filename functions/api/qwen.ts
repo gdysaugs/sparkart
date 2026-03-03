@@ -424,7 +424,7 @@ const ensureUsageOwnership = async (
 ) => {
   const { data: chargeEvent, error: chargeError } = await admin
     .from('ticket_events')
-    .select('user_id, email')
+    .select('user_id, email, metadata')
     .eq('usage_id', usageId)
     .maybeSingle()
 
@@ -442,6 +442,66 @@ const ensureUsageOwnership = async (
   const matchesEmail = Boolean(email && chargeEmail && chargeEmail.toLowerCase() === email.toLowerCase())
   if (!matchesUser && !matchesEmail) {
     return { response: jsonResponse({ error: 'Job not found.' }, 404, corsHeaders) }
+  }
+
+  return { ok: true as const, chargeEvent }
+}
+
+const getBoundJobIdFromMetadata = (metadata: unknown) => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return ''
+  const raw = (metadata as Record<string, unknown>).job_id
+  return typeof raw === 'string' ? raw.trim() : ''
+}
+
+const bindUsageToJobId = async (
+  admin: ReturnType<typeof createClient>,
+  user: User,
+  usageId: string,
+  jobId: string,
+  corsHeaders: HeadersInit,
+) => {
+  const { data: chargeEvent, error: chargeError } = await admin
+    .from('ticket_events')
+    .select('user_id, email, metadata')
+    .eq('usage_id', usageId)
+    .maybeSingle()
+
+  if (chargeError) {
+    return { response: jsonResponse({ error: chargeError.message }, 500, corsHeaders) }
+  }
+  if (!chargeEvent) {
+    return { response: jsonResponse({ error: 'Job not found.' }, 404, corsHeaders) }
+  }
+
+  const email = user.email ?? ''
+  const chargeUserId = chargeEvent.user_id ? String(chargeEvent.user_id) : ''
+  const chargeEmail = chargeEvent.email ? String(chargeEvent.email) : ''
+  const matchesUser = Boolean(chargeUserId && chargeUserId === user.id)
+  const matchesEmail = Boolean(email && chargeEmail && chargeEmail.toLowerCase() === email.toLowerCase())
+  if (!matchesUser && !matchesEmail) {
+    return { response: jsonResponse({ error: 'Job not found.' }, 404, corsHeaders) }
+  }
+
+  const currentMetadata =
+    chargeEvent.metadata && typeof chargeEvent.metadata === 'object' && !Array.isArray(chargeEvent.metadata)
+      ? (chargeEvent.metadata as Record<string, unknown>)
+      : {}
+  const boundJobId = getBoundJobIdFromMetadata(currentMetadata)
+  if (boundJobId && boundJobId !== jobId) {
+    return { response: jsonResponse({ error: 'usage_id does not match job id.' }, 409, corsHeaders) }
+  }
+  if (boundJobId === jobId) {
+    return { ok: true as const }
+  }
+
+  const nextMetadata = { ...currentMetadata, job_id: jobId }
+  const { error: updateError } = await admin
+    .from('ticket_events')
+    .update({ metadata: nextMetadata })
+    .eq('usage_id', usageId)
+
+  if (updateError) {
+    return { response: jsonResponse({ error: updateError.message }, 500, corsHeaders) }
   }
 
   return { ok: true as const }
@@ -631,6 +691,13 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const ownership = await ensureUsageOwnership(auth.admin, auth.user, usageId, corsHeaders)
   if ('response' in ownership) {
     return ownership.response
+  }
+  const boundJobId = getBoundJobIdFromMetadata(ownership.chargeEvent?.metadata)
+  if (!boundJobId) {
+    return jsonResponse({ error: 'Job binding is missing. Please regenerate.' }, 409, corsHeaders)
+  }
+  if (boundJobId !== id) {
+    return jsonResponse({ error: 'Job not found.' }, 404, corsHeaders)
   }
 
   const variant = variantParam ? normalizeVariant(variantParam) : inferVariantFromUsageId(usageId)
@@ -1005,6 +1072,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     } catch {
       upstreamPayload = null
     }
+    const jobId = extractJobId(upstreamPayload)
+    if (jobId) {
+      const binding = await bindUsageToJobId(auth.admin, auth.user, usageId, String(jobId), corsHeaders)
+      if ('response' in binding) {
+        return binding.response
+      }
+    }
 
     if (!upstreamPayload || typeof upstreamPayload !== 'object' || Array.isArray(upstreamPayload)) {
       const refundResult = await refundTicket(
@@ -1107,6 +1181,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     upstreamPayload = JSON.parse(raw)
   } catch {
     upstreamPayload = null
+  }
+  const jobId = extractJobId(upstreamPayload)
+  if (jobId) {
+    const binding = await bindUsageToJobId(auth.admin, auth.user, usageId, String(jobId), corsHeaders)
+    if ('response' in binding) {
+      return binding.response
+    }
   }
 
   if (!upstreamPayload || typeof upstreamPayload !== 'object' || Array.isArray(upstreamPayload)) {

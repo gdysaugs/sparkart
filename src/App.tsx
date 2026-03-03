@@ -7,6 +7,7 @@ export function App() {
     <Routes>
       <Route path='/' element={<Video />} />
       <Route path='/video' element={<Video />} />
+      <Route path='/sparkart' element={<Navigate to='/video' replace />} />
       <Route path='/purchase' element={<Navigate to='/video' replace />} />
       <Route path='/email-login' element={<EmailLogin />} />
       <Route path='*' element={<Navigate to='/' replace />} />

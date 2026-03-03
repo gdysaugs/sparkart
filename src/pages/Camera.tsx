@@ -1,4 +1,4 @@
-﻿import {
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -10,6 +10,7 @@ import type { Session } from '@supabase/supabase-js'
 import { isAuthConfigured, signOutSafely, supabase } from '../lib/supabaseClient'
 import { getOAuthRedirectUrl } from '../lib/oauthRedirect'
 import { GuestIntro } from '../components/GuestIntro'
+import { SparkArtQwen } from './SparkArtQwen'
 import './camera.css'
 import './video-studio.css'
 
@@ -21,6 +22,7 @@ type RenderResult = {
 }
 
 type VideoEngine = 'remix' | 'rapid'
+type GenerationMode = 'i2v' | 'qwen_edit'
 
 const MAX_PARALLEL = 1
 const API_ENDPOINTS: Record<VideoEngine, string> = {
@@ -30,15 +32,20 @@ const API_ENDPOINTS: Record<VideoEngine, string> = {
 const FIXED_FPS = 10
 const FIXED_VIDEO_SECONDS = 6
 const FIXED_STEPS = 4
-const FIXED_CFG = 1
+const DEFAULT_CFG = 1
+const CFG_MIN = 0.1
+const CFG_MAX = 2
+const CFG_STEP = 0.1
 const FIXED_MAX_LONG_SIDE = 768
 const FIXED_MIN_SIDE = 256
 const FIXED_SIZE_MULTIPLE = 64
 const BONUS_ROULETTE_VALUES = [1] as const
 const OAUTH_REDIRECT_URL = getOAuthRedirectUrl()
 const DEFAULT_ENGINE: VideoEngine = 'remix'
+const PROMPT_MAX_LENGTH = 1000
+const PROMPT_PLACEHOLDER = '例: 女が両手で胸を揉む'
 const getApiEndpoint = (engine: VideoEngine) => API_ENDPOINTS[engine] ?? API_ENDPOINTS.remix
-const COIN_PURCHASE_URL = 'https://checkoutcoins.uk/'
+const COIN_PURCHASE_URL = 'https://checkoutcoins.uk/purchase#'
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -264,8 +271,10 @@ const extractVideoList = (payload: any) => {
 const extractJobId = (payload: any) => payload?.id || payload?.jobId || payload?.job_id || payload?.output?.id
 
 export function Camera() {
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('i2v')
   const [prompt, setPrompt] = useState('')
   const [negativePrompt, setNegativePrompt] = useState('')
+  const [cfg, setCfg] = useState(DEFAULT_CFG)
   const [sourceImageFile, setSourceImageFile] = useState<File | null>(null)
   const [sourceImagePreview, setSourceImagePreview] = useState('')
   const [results, setResults] = useState<RenderResult[]>([])
@@ -299,6 +308,8 @@ export function Camera() {
   const displayVideo = results[0]?.video ?? null
   const accessToken = session?.access_token ?? ''
   const canGenerate = prompt.trim().length > 0 && Boolean(sourceImageFile) && !isRunning
+  const isI2vMode = generationMode === 'i2v'
+  const generationLabel = isI2vMode ? '動画生成' : '画像生成'
 
   const viewerStyle = useMemo(
     () =>
@@ -332,7 +343,7 @@ export function Camera() {
     const oauthError = url.searchParams.get('error_description') || url.searchParams.get('error')
     if (oauthError) {
       console.error('OAuth callback error', oauthError)
-      setStatusMessage('Login failed. Please try again.')
+      setStatusMessage('ログインに失敗しました。もう一度お試しください。')
       url.searchParams.delete('error')
       url.searchParams.delete('error_description')
       window.history.replaceState({}, document.title, url.toString())
@@ -344,7 +355,7 @@ export function Camera() {
     supabase.auth.exchangeCodeForSession(window.location.href).then(({ error }) => {
       if (error) {
         console.error('exchangeCodeForSession failed', error)
-        setStatusMessage('Login failed. Please try again.')
+        setStatusMessage('ログインに失敗しました。もう一度お試しください。')
         return
       }
       const cleaned = new URL(window.location.href)
@@ -384,7 +395,7 @@ export function Camera() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setTicketStatus('error')
-        setTicketMessage(data?.error || 'Failed to fetch coin balance.')
+        setTicketMessage(data?.error || 'コイン残高の取得に失敗しました。')
         setTicketCount(null)
         return null
       }
@@ -407,7 +418,7 @@ export function Camera() {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       setBonusStatus('error')
-      setBonusMessage(data?.error || 'Failed to fetch bonus status.')
+      setBonusMessage(data?.error || 'ボーナス状態の取得に失敗しました。')
       return
     }
     setBonusStatus('idle')
@@ -457,7 +468,7 @@ export function Camera() {
         seconds: targetSeconds,
         num_frames: targetFrameCount,
         steps: FIXED_STEPS,
-        cfg: FIXED_CFG,
+        cfg: Number(cfg.toFixed(1)),
         seed: 0,
         randomize_seed: true,
         worker_mode: 'comfyui',
@@ -494,7 +505,7 @@ export function Camera() {
       if (!jobId) throw new Error('Failed to get job id.')
       return { jobId }
     },
-    [negativePrompt, prompt, sourceImageFile, videoEngine],
+    [cfg, negativePrompt, prompt, sourceImageFile, videoEngine],
   )
 
   const pollJob = useCallback(async (jobId: string, runId: number, token?: string, engine: VideoEngine = DEFAULT_ENGINE) => {
@@ -545,27 +556,38 @@ export function Camera() {
     throw new Error('Generation timed out.')
   }, [])
 
-  const startBatch = useCallback(async () => {
+  const ensureTicketsForGeneration = useCallback(async () => {
     if (!session) {
-      setStatusMessage('Please log in first.')
-      return
+      setStatusMessage('先にログインしてください。')
+      return false
     }
     if (ticketStatus === 'loading') {
       setStatusMessage('コイン確認中...')
-      return
+      return false
     }
     if (accessToken) {
       setStatusMessage('コイン確認中...')
       const latestCount = await fetchTickets(accessToken)
       if (latestCount !== null && latestCount < selectedTicketCost) {
         setShowTicketModal(true)
-        return
+        return false
       }
-    } else if (ticketCount === null) {
+      return true
+    }
+    if (ticketCount === null) {
       setStatusMessage('コイン確認中...')
-      return
-    } else if (ticketCount < selectedTicketCost) {
+      return false
+    }
+    if (ticketCount < selectedTicketCost) {
       setShowTicketModal(true)
+      return false
+    }
+    return true
+  }, [accessToken, fetchTickets, selectedTicketCost, session, ticketCount, ticketStatus])
+
+  const startBatch = useCallback(async () => {
+    const hasTicket = await ensureTicketsForGeneration()
+    if (!hasTicket) {
       return
     }
     const runId = runIdRef.current + 1
@@ -624,7 +646,7 @@ export function Camera() {
 
       await runQueue(tasks, MAX_PARALLEL)
       if (runIdRef.current === runId) {
-        setStatusMessage('Done')
+        setStatusMessage('完了')
         if (accessToken) {
           void fetchTickets(accessToken)
         }
@@ -639,15 +661,19 @@ export function Camera() {
         setIsRunning(false)
       }
     }
-  }, [accessToken, fetchTickets, pollJob, selectedTicketCost, session, submitVideo, ticketCount, ticketStatus, videoEngine])
+  }, [accessToken, ensureTicketsForGeneration, fetchTickets, pollJob, submitVideo, videoEngine])
 
   const handleGenerate = async () => {
     if (!sourceImageFile) {
-      setStatusMessage('Please select an image.')
+      setStatusMessage('画像を選択してください。')
       return
     }
     if (!prompt.trim()) {
-      setStatusMessage('Please enter a prompt.')
+      setStatusMessage('プロンプトを入力してください。')
+      return
+    }
+    if (prompt.length > PROMPT_MAX_LENGTH) {
+      setStatusMessage(`プロンプトは最大${PROMPT_MAX_LENGTH}文字です。`)
       return
     }
     await startBatch()
@@ -696,7 +722,10 @@ export function Camera() {
 
   const handleConfirmPurchaseMove = () => {
     setShowPurchaseConfirmModal(false)
-    window.location.assign(COIN_PURCHASE_URL)
+    const popup = window.open(COIN_PURCHASE_URL, '_blank')
+    if (popup) {
+      popup.opener = null
+    }
   }
 
   const formatDateTime = (value: string | null) => {
@@ -758,7 +787,7 @@ export function Camera() {
     if (!res.ok) {
       stopBonusRoulette()
       setBonusStatus('error')
-      setBonusMessage(data?.error || 'Failed to claim daily bonus.')
+      setBonusMessage(data?.error || 'デイリーボーナスの受け取りに失敗しました。')
       setBonusClaiming(false)
       return
     }
@@ -781,18 +810,18 @@ export function Camera() {
       if (awarded !== null) {
         setBonusRouletteAwarded(awarded)
         stopBonusRoulette(awarded)
-        setBonusMessage(`Daily bonus claimed. +${awarded} coins`)
+        setBonusMessage(`デイリーボーナスを受け取りました。+${awarded}コイン`)
       } else {
         setBonusRouletteAwarded(null)
         stopBonusRoulette()
-        setBonusMessage('Daily bonus claimed.')
+        setBonusMessage('デイリーボーナスを受け取りました。')
       }
     } else {
       setBonusRouletteAwarded(null)
       stopBonusRoulette()
       setBonusStatus('idle')
       setBonusMessage(
-        nextEligibleAt ? formatTimeUntilClaim(nextEligibleAt) : 'Not eligible yet.',
+        nextEligibleAt ? formatTimeUntilClaim(nextEligibleAt) : 'まだ受け取りできません。',
       )
     }
     await fetchDailyBonus(accessToken)
@@ -859,19 +888,39 @@ export function Camera() {
 
   return (
     <div className="camera-app video-studio-page">
+      {isI2vMode ? (
       <div className="video-studio-layout">
         <section className="studio-block studio-block--input">
-          <header className="studio-head">
-            <p className="studio-head__kicker">Image to Video</p>
-            <h1>I2V</h1>
-            <p>
-              1 image can be converted into a 6-second video.
-            </p>
+          <header className="studio-head studio-head--with-mode">
+            <div className="studio-head__copy">
+              <h1>I2V</h1>
+              <p>
+                1枚の画像から6秒の動画を生成できます。
+              </p>
+            </div>
+            <div className="studio-mode-switch studio-mode-switch--inline" aria-label="Generation mode switch">
+              <button
+                type="button"
+                className={`studio-mode-switch__btn${isI2vMode ? ' is-active' : ''}`}
+                onClick={() => setGenerationMode('i2v')}
+                disabled={isRunning}
+              >
+                Video
+              </button>
+              <button
+                type="button"
+                className={`studio-mode-switch__btn${!isI2vMode ? ' is-active' : ''}`}
+                onClick={() => setGenerationMode('qwen_edit')}
+                disabled={isRunning}
+              >
+                Edit
+              </button>
+            </div>
           </header>
           <div className="studio-ticket-row">
             <div className="studio-ticket">
               {ticketStatus === 'loading' && 'コイン確認中...'}
-              {ticketStatus !== 'loading' && `Your remaining coins: ${ticketCount ?? 0}` }
+              {ticketStatus !== 'loading' && `保有コイン数 ${ticketCount ?? 0}枚` }
               {ticketStatus === 'error' && ticketMessage ? ` / ${ticketMessage}` : ''}
             </div>
             <button type="button" className="ghost-button studio-buy-button" onClick={handleOpenPurchaseConfirm}>
@@ -891,10 +940,10 @@ export function Camera() {
                 +
               </div>
               <div className="studio-upload__text">
-                <strong>{sourceImageFile?.name || 'Upload an image'}</strong>
-                <span>Select JPG / PNG / WEBP</span>
+                <strong>{sourceImageFile?.name || '画像をアップロード'}</strong>
+                <span>JPG / PNG / WEBP</span>
               </div>
-              <span className="studio-upload__chip">Tap / Drop</span>
+              <span className="studio-upload__chip">選択 / ドロップ</span>
             </div>
           </label>
 
@@ -918,22 +967,39 @@ export function Camera() {
           )}
 
           <label className="studio-field">
-            <span>Prompt</span>
+            <span>プロンプト</span>
             <textarea
               rows={4}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="例: 女が両手で胸を揉む"
+              placeholder={PROMPT_PLACEHOLDER}
+              maxLength={PROMPT_MAX_LENGTH}
             />
+            <small>{`${prompt.length}/${PROMPT_MAX_LENGTH}`}</small>
           </label>
 
           <label className="studio-field studio-field--sub">
-            <span>Negative prompt</span>
+            <span>ネガティブプロンプト</span>
             <textarea
               rows={3}
               value={negativePrompt}
               onChange={(e) => setNegativePrompt(e.target.value)}
             />
+          </label>
+
+          <label className="studio-field studio-field--sub">
+            <span>CFG</span>
+            <input
+              type="range"
+              min={CFG_MIN}
+              max={CFG_MAX}
+              step={CFG_STEP}
+              value={cfg}
+              onChange={(event) => setCfg(Number(event.target.value))}
+              disabled={isRunning}
+            />
+            <small>{`現在: ${cfg.toFixed(1)}`}</small>
+            <small>CFGはプロンプトの効きやすさです。</small>
           </label>
 
           <div className="studio-engine">
@@ -952,7 +1018,7 @@ export function Camera() {
 
           <div className="studio-actions">
             <button type="button" className="primary-button" onClick={handleGenerate} disabled={!canGenerate}>
-              {isRunning ? 'Generating...' : 'Generate video'}
+              {isRunning ? '生成中...' : '動画を生成'}
             </button>
             <small>Sparkはプロンプトに忠実で、動きがより滑らかです。</small>
             <small>Neo Sparkは、より自由で大胆な動きを重視します。</small>
@@ -961,7 +1027,7 @@ export function Camera() {
 
           <section className="studio-credit-box">
             <header>
-              <h3>Daily Coin Drop</h3>
+              <h3>デイリーコイン</h3>
               <span className={`studio-bonus-pill${bonusCanClaim ? ' is-ready' : ''}`}>
                 {bonusStatus === 'loading' && 'ステータス更新中'}
                 {bonusStatus !== 'loading' && bonusCanClaim && '今すぐ受け取り可能'}
@@ -975,7 +1041,7 @@ export function Camera() {
                 <span>
                   {bonusCanClaim ? 'ログイン中なら毎日1回受け取れます' : '次回の受け取りまでクールタイムがあります'}
                 </span>
-                {bonusRouletteAwarded !== null && <span>今回の付与 +{bonusRouletteAwarded} coin</span>}
+                {bonusRouletteAwarded !== null && <span>今回の付与 +{bonusRouletteAwarded}コイン</span>}
               </div>
             </div>
             <button
@@ -993,13 +1059,12 @@ export function Camera() {
         <section className="studio-block studio-block--output" style={viewerStyle}>
           <header className="studio-output-head">
             <div>
-              <p>Output</p>
-              <h2>Generate</h2>
+              <h2>生成結果</h2>
               {statusMessage && !isRunning && <span>{statusMessage}</span>}
             </div>
             {canDownload && (
               <button type="button" className="ghost-button" onClick={handleDownload}>
-                ダウンロード
+                Save
               </button>
             )}
           </header>
@@ -1017,7 +1082,7 @@ export function Camera() {
                   <span />
                 </div>
                 <strong>生成中...</strong>
-                <p>This may take 1-2 minutes.</p>
+                <p>1〜2分ほどかかる場合があります。</p>
               </div>
             ) : displayVideo ? (
               isGif ? (
@@ -1031,6 +1096,32 @@ export function Camera() {
           </div>
         </section>
       </div>
+      ) : (
+        <div className="studio-qwen-wrap">
+          <SparkArtQwen
+            generationMode={generationMode}
+            onChangeMode={setGenerationMode}
+            accessToken={accessToken}
+            selectedTicketCost={selectedTicketCost}
+            ticketStatus={ticketStatus}
+            ticketCount={ticketCount}
+            ticketMessage={ticketMessage}
+            onOpenPurchaseConfirm={handleOpenPurchaseConfirm}
+            bonusStatus={bonusStatus}
+            bonusCanClaim={bonusCanClaim}
+            bonusNextEligibleAt={bonusNextEligibleAt}
+            bonusRouletteRolling={bonusRouletteRolling}
+            bonusRouletteAwarded={bonusRouletteAwarded}
+            bonusClaiming={bonusClaiming}
+            bonusMessage={bonusMessage}
+            onClaimDailyBonus={handleClaimDailyBonus}
+            formatTimeUntilClaim={formatTimeUntilClaim}
+            onEnsureTickets={ensureTicketsForGeneration}
+            onTicketShortage={() => setShowTicketModal(true)}
+            onTicketCountUpdate={(nextCount) => setTicketCount(nextCount)}
+          />
+        </div>
+      )}
 
       <section className="studio-logout-bar">
         <div>
@@ -1046,7 +1137,7 @@ export function Camera() {
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal-card">
             <h3>コイン不足</h3>
-            <p>この設定の動画生成には{selectedTicketCost}コインが必要です。</p>
+            <p>この設定の{generationLabel}には{selectedTicketCost}コインが必要です。</p>
             <div className="modal-actions">
               <button type="button" className="primary-button" onClick={() => setShowTicketModal(false)}>
                 閉じる
@@ -1055,7 +1146,7 @@ export function Camera() {
           </div>
         </div>
       )}
-      {errorModalMessage && (
+      {isI2vMode && errorModalMessage && (
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal-card">
             <h3>リクエストが拒否されました</h3>
@@ -1072,7 +1163,7 @@ export function Camera() {
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal-card">
             <h3>購入ページへ移動</h3>
-            <p>購入ページに移動します。表示されたページで再度ログインしてください。</p>
+            <p>購入ページに移動します。表示されたページで再度ログインしてください。購入ページで購入したコインは即座にSparkMotionにも反映されます。</p>
             <div className="modal-actions">
               <button type="button" className="primary-button" onClick={handleConfirmPurchaseMove}>
                 はい

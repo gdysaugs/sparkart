@@ -1,171 +1,34 @@
-import { createClient } from '@supabase/supabase-js'
+import { buildCorsHeaders, isCorsBlocked } from '../../_shared/cors'
 
 type Env = {
-  SUPABASE_URL?: string
-  SUPABASE_SERVICE_ROLE_KEY?: string
-  STRIPE_WEBHOOK_SECRET?: string
+  CORS_ALLOWED_ORIGINS?: string
 }
 
-// Accept both the old and new identifiers so previously-created Checkout Sessions
-// (before the rebrand/price swap deploy) can still be granted by retrying the webhook.
-const ACCEPTED_APP_TAGS = new Set(['meltai', 'animone'])
+const corsMethods = 'POST, OPTIONS'
 
-const ACCEPTED_PRICE_IDS = new Set([
-  // New plans
-  'price_1T0FbRADIkb9D0vbJU219i32', // ミニパック
-  'price_1T0FcJADIkb9D0vbswnpncgW', // お得パック
-  'price_1T0Ff0ADIkb9D0vbdH1cayHz', // 大容量パック
-
-  // Legacy plans (keep to allow backfilling older sessions)
-  'price_1Sy5N6Abw0uHQjne0Q6aV0M1', // Starter
-  'price_1Sy5QbAbw0uHQjne0wydR1AG', // Basic
-  'price_1Sy5QqAbw0uHQjneTnEIOCFx', // Plus
-  'price_1Sy5R3Abw0uHQjnekmxX7Q5n', // Pro
-])
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Stripe-Signature',
-}
-
-const jsonResponse = (body: unknown, status = 200) =>
+const jsonResponse = (body: unknown, status = 200, headers: HeadersInit = {}) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...headers, 'Content-Type': 'application/json; charset=utf-8' },
   })
 
-const received = (extra: Record<string, unknown> = {}) => jsonResponse({ received: true, ...extra })
-
-const getSupabaseAdmin = (env: Env) => {
-  const url = env.SUPABASE_URL
-  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !serviceKey) return null
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
+const deprecatedBody = {
+  error: 'Deprecated endpoint.',
+  message: 'Use https://checkoutcoins.uk for Stripe webhook handling.',
 }
 
-const textEncoder = new TextEncoder()
-
-const toHex = (buffer: ArrayBuffer) =>
-  Array.from(new Uint8Array(buffer))
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join('')
-
-const timingSafeEqual = (a: string, b: string) => {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i += 1) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+export const onRequestOptions: PagesFunction<Env> = async ({ request, env }) => {
+  const corsHeaders = buildCorsHeaders(request, env, corsMethods)
+  if (isCorsBlocked(request, env)) {
+    return new Response(null, { status: 403, headers: corsHeaders })
   }
-  return diff === 0
+  return jsonResponse(deprecatedBody, 410, corsHeaders)
 }
-
-const verifyStripeSignature = async (payload: string, signature: string, secret: string) => {
-  const parts = signature.split(',').map((item) => item.trim())
-  const timestampPart = parts.find((item) => item.startsWith('t='))
-  const v1Parts = parts.filter((item) => item.startsWith('v1='))
-  if (!timestampPart || v1Parts.length === 0) return false
-  const timestamp = timestampPart.slice(2)
-  const signedPayload = `${timestamp}.${payload}`
-  const key = await crypto.subtle.importKey(
-    'raw',
-    textEncoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  )
-  const signatureBuffer = await crypto.subtle.sign('HMAC', key, textEncoder.encode(signedPayload))
-  const expected = toHex(signatureBuffer)
-  return v1Parts.some((part) => timingSafeEqual(part.slice(3), expected))
-}
-
-export const onRequestOptions: PagesFunction = async () => new Response(null, { headers: corsHeaders })
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  const secret = env.STRIPE_WEBHOOK_SECRET
-  if (!secret) {
-    return jsonResponse({ error: 'STRIPE_WEBHOOK_SECRET is not set.' }, 500)
+  const corsHeaders = buildCorsHeaders(request, env, corsMethods)
+  if (isCorsBlocked(request, env)) {
+    return new Response(null, { status: 403, headers: corsHeaders })
   }
-
-  const signature = request.headers.get('Stripe-Signature') || request.headers.get('stripe-signature') || ''
-  const body = await request.text()
-  const isValid = await verifyStripeSignature(body, signature, secret)
-  if (!isValid) {
-    return jsonResponse({ error: 'Invalid signature.' }, 401)
-  }
-
-  const event = body ? JSON.parse(body) : null
-  if (!event?.type) {
-    return jsonResponse({ error: 'Invalid event payload.' }, 400)
-  }
-
-  if (event.type !== 'checkout.session.completed') {
-    return received({ ignored: true, reason: 'unsupported_event_type', event_type: event.type })
-  }
-
-  const session = event.data?.object ?? {}
-  if (session.payment_status && session.payment_status !== 'paid') {
-    return received({ ignored: true, reason: 'not_paid', payment_status: session.payment_status })
-  }
-
-  const appTag = String(session.metadata?.app ?? '')
-  if (!ACCEPTED_APP_TAGS.has(appTag)) {
-    return received({ ignored: true, reason: 'app_mismatch', app: appTag })
-  }
-
-  const priceId = String(session.metadata?.price_id ?? '')
-  if (!priceId || !ACCEPTED_PRICE_IDS.has(priceId)) {
-    return received({ ignored: true, reason: 'price_id_mismatch', price_id: priceId })
-  }
-
-  const tickets = Number(session.metadata?.tickets ?? 0)
-  const email = String(session.metadata?.email ?? session.customer_details?.email ?? '')
-  const userId = String(session.metadata?.user_id ?? session.client_reference_id ?? '')
-  const usageId = String(event.id ?? session.id ?? '')
-  const stripeCustomerId = session.customer ? String(session.customer) : null
-
-  if (!tickets || !email || !userId || !usageId) {
-    return jsonResponse({ error: 'Missing metadata.' }, 400)
-  }
-
-  const admin = getSupabaseAdmin(env)
-  if (!admin) {
-    return jsonResponse({ error: 'SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set.' }, 500)
-  }
-
-  const { data: userCheck, error: userCheckError } = await admin.auth.admin.getUserById(userId)
-  if (userCheckError || !userCheck?.user) {
-    return received({ ignored: true, reason: 'user_not_found', user_id: userId })
-  }
-
-  const { data: rpcData, error: rpcError } = await admin.rpc('grant_tickets', {
-    p_usage_id: usageId,
-    p_user_id: userId,
-    p_email: email,
-    p_amount: tickets,
-    p_reason: 'stripe_purchase',
-    p_metadata: {
-      price_id: session.metadata?.price_id ?? null,
-      plan_label: session.metadata?.plan_label ?? null,
-      session_id: session.id ?? null,
-    },
-    p_stripe_customer_id: stripeCustomerId,
-  })
-
-  if (rpcError) {
-    const message = rpcError.message ?? 'Failed to grant tickets.'
-    if (message.includes('INVALID')) {
-      return jsonResponse({ error: message }, 400)
-    }
-    return jsonResponse({ error: message }, 500)
-  }
-
-  const result = Array.isArray(rpcData) ? rpcData[0] : rpcData
-  if (result?.already_processed) {
-    return received({ duplicate: true })
-  }
-
-  return received()
+  return jsonResponse(deprecatedBody, 410, corsHeaders)
 }

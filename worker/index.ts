@@ -1,12 +1,16 @@
 import { onRequestGet as qwenGet, onRequestPost as qwenPost, onRequestOptions as qwenOptions } from '../functions/api/qwen'
+import {
+  onRequestGet as qwenSparkArtGet,
+  onRequestPost as qwenSparkArtPost,
+  onRequestOptions as qwenSparkArtOptions,
+} from '../functions/api/qwen_sparkart'
 import { onRequestGet as wanGet, onRequestPost as wanPost, onRequestOptions as wanOptions } from '../functions/api/wan'
 import { onRequestGet as wanRemixGet, onRequestPost as wanRemixPost, onRequestOptions as wanRemixOptions } from '../functions/api/wan_remix'
 import { onRequestGet as wanRapidGet, onRequestPost as wanRapidPost, onRequestOptions as wanRapidOptions } from '../functions/api/wan-rapid'
 import { onRequestGet as ticketsGet, onRequestOptions as ticketsOptions } from '../functions/api/tickets'
 import { onRequestGet as dailyBonusGet, onRequestPost as dailyBonusPost, onRequestOptions as dailyBonusOptions } from '../functions/api/daily_bonus'
 import { onRequestPost as r2PresignPost, onRequestOptions as r2PresignOptions } from '../functions/api/r2_presign'
-import { onRequestPost as stripeCheckoutPost, onRequestOptions as stripeCheckoutOptions } from '../functions/api/stripe/checkout'
-import { onRequestPost as stripeWebhookPost, onRequestOptions as stripeWebhookOptions } from '../functions/api/stripe/webhook'
+import { onRequestGet as publicConfigGet } from '../functions/api/public_config'
 
 type Env = {
   RUNPOD_API_KEY: string
@@ -28,6 +32,9 @@ type Env = {
   STRIPE_SUCCESS_URL?: string
   STRIPE_CANCEL_URL?: string
   CORS_ALLOWED_ORIGINS?: string
+  VITE_SUPABASE_URL?: string
+  VITE_SUPABASE_ANON_KEY?: string
+  VITE_SUPABASE_REDIRECT_URL?: string
 }
 
 type PagesArgs = {
@@ -37,6 +44,17 @@ type PagesArgs = {
 
 const notFound = () => new Response('Not Found', { status: 404 })
 const methodNotAllowed = () => new Response('Method Not Allowed', { status: 405 })
+const deprecatedStripeEndpoint = () =>
+  new Response(
+    JSON.stringify({
+      error: 'Deprecated endpoint.',
+      message: 'Use https://checkoutcoins.uk for coin purchase and Stripe webhook handling.',
+    }),
+    {
+      status: 410,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    },
+  )
 
 export default {
   async fetch(request: Request, env: Env) {
@@ -44,6 +62,18 @@ export default {
     const path = url.pathname
     const method = request.method.toUpperCase()
     const args: PagesArgs = { request, env }
+
+    if (path.startsWith('/api/public_config')) {
+      if (method === 'GET') return publicConfigGet(args as any)
+      return methodNotAllowed()
+    }
+
+    if (path.startsWith('/api/qwen_sparkart')) {
+      if (method === 'OPTIONS') return qwenSparkArtOptions(args as any)
+      if (method === 'GET') return qwenSparkArtGet(args as any)
+      if (method === 'POST') return qwenSparkArtPost(args as any)
+      return methodNotAllowed()
+    }
 
     if (path.startsWith('/api/qwen')) {
       if (method === 'OPTIONS') return qwenOptions(args as any)
@@ -93,14 +123,12 @@ export default {
     }
 
     if (path.startsWith('/api/stripe/checkout')) {
-      if (method === 'OPTIONS') return stripeCheckoutOptions(args as any)
-      if (method === 'POST') return stripeCheckoutPost(args as any)
+      if (method === 'OPTIONS' || method === 'POST') return deprecatedStripeEndpoint()
       return methodNotAllowed()
     }
 
     if (path.startsWith('/api/stripe/webhook')) {
-      if (method === 'OPTIONS') return stripeWebhookOptions(args as any)
-      if (method === 'POST') return stripeWebhookPost(args as any)
+      if (method === 'OPTIONS' || method === 'POST') return deprecatedStripeEndpoint()
       return methodNotAllowed()
     }
 

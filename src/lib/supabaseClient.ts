@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { getRuntimePublicConfig } from './publicConfig'
 
 function normalizeEnvString(v: string | undefined): string {
   // Guard against accidentally quoted/whitespace-padded values in build vars.
@@ -19,8 +20,9 @@ function normalizeSupabaseUrl(v: string | undefined): string {
   }
 }
 
-const supabaseUrl = normalizeSupabaseUrl(import.meta.env.VITE_SUPABASE_URL)
-const supabaseAnonKey = normalizeEnvString(import.meta.env.VITE_SUPABASE_ANON_KEY)
+const runtimeConfig = getRuntimePublicConfig()
+const supabaseUrl = normalizeSupabaseUrl(import.meta.env.VITE_SUPABASE_URL || runtimeConfig.VITE_SUPABASE_URL)
+const supabaseAnonKey = normalizeEnvString(import.meta.env.VITE_SUPABASE_ANON_KEY || runtimeConfig.VITE_SUPABASE_ANON_KEY)
 
 export const isAuthConfigured = Boolean(supabaseUrl && supabaseAnonKey)
 export const supabase = isAuthConfigured ? createClient(supabaseUrl, supabaseAnonKey) : null

@@ -26,10 +26,7 @@
         "57",
         0
       ],
-      "noise_seed": [
-        "105",
-        0
-      ],
+      "noise_seed": 0,
       "steps": 12,
       "start_at_step": 10,
       "add_noise": "disable",
@@ -156,10 +153,7 @@
         "107",
         2
       ],
-      "noise_seed": [
-        "105",
-        0
-      ],
+      "noise_seed": 0,
       "steps": 12,
       "end_at_step": 10,
       "add_noise": "enable",
@@ -203,15 +197,6 @@
     },
     "_meta": {
       "title": "CLIP Text Encode (Positive Prompt)"
-    }
-  },
-  "105": {
-    "class_type": "Seed (rgthree)",
-    "inputs": {
-      "seed": -1,
-      "seed_str": "",
-      "seed_mode": "",
-      "seed_extra": ""
     }
   }
 }

@@ -2,6 +2,8 @@ import workflowI2VTemplate from './wan-remix-workflow-i2v.json'
 import workflowT2VTemplate from './wan-remix-workflow-t2v.json'
 import nodeMapI2VTemplate from './wan-remix-node-map-i2v.json'
 import nodeMapT2VTemplate from './wan-remix-node-map-t2v.json'
+import workflowRapidI2VTemplate from './wan-rapid-workflow-i2v.json'
+import nodeMapRapidI2VTemplate from './wan-rapid-node-map-i2v.json'
 import { createClient, type User } from '@supabase/supabase-js'
 import { buildCorsHeaders, isCorsBlocked } from '../_shared/cors'
 import { isUnderageImage } from '../_shared/rekognition'
@@ -56,8 +58,8 @@ const SIGNUP_TICKET_GRANT = 5
 const BASE_VIDEO_TICKET_COST = 1
 const EIGHT_SECOND_MODE_TICKET_COST = 2
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
-const MAX_PROMPT_LENGTH = 500
-const MAX_NEGATIVE_PROMPT_LENGTH = 500
+const MAX_PROMPT_LENGTH = 1000
+const MAX_NEGATIVE_PROMPT_LENGTH = 1000
 const FIXED_STEPS = 4
 const MIN_DIMENSION = 256
 const MAX_DIMENSION = 3000
@@ -72,11 +74,28 @@ const DEFAULT_WIDTH = 768
 const DEFAULT_HEIGHT = 448
 const UNDERAGE_BLOCK_MESSAGE =
   'この画像には暴力的な表現、低年齢、または規約違反の可能性があります。別の画像でお試しください。'
-const getWorkflowTemplate = async (mode: 'i2v' | 't2v') =>
-  (mode === 't2v' ? workflowT2VTemplate : workflowI2VTemplate) as Record<string, unknown>
 
-const getNodeMap = async (mode: 'i2v' | 't2v') =>
-  (mode === 't2v' ? nodeMapT2VTemplate : nodeMapI2VTemplate) as NodeMap
+type WorkflowFlavor = 'rapid' | 'remix'
+
+const resolveWorkflowFlavor = (request: Request): WorkflowFlavor => {
+  try {
+    const path = new URL(request.url).pathname.toLowerCase()
+    if (path.includes('/api/wan-rapid')) return 'rapid'
+  } catch {
+    // fall through
+  }
+  return 'remix'
+}
+
+const getWorkflowTemplate = async (mode: 'i2v' | 't2v', flavor: WorkflowFlavor) => {
+  if (mode === 't2v') return workflowT2VTemplate as Record<string, unknown>
+  return (flavor === 'rapid' ? workflowRapidI2VTemplate : workflowI2VTemplate) as Record<string, unknown>
+}
+
+const getNodeMap = async (mode: 'i2v' | 't2v', flavor: WorkflowFlavor) => {
+  if (mode === 't2v') return nodeMapT2VTemplate as NodeMap
+  return (flavor === 'rapid' ? nodeMapRapidI2VTemplate : nodeMapI2VTemplate) as NodeMap
+}
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
@@ -720,6 +739,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return jsonResponse({ error: 'mode must be "i2v" or "t2v".' }, 400, corsHeaders)
   }
   const isT2V = mode === 't2v'
+  const workflowFlavor = resolveWorkflowFlavor(request)
   const imageValue = input?.image_base64 ?? input?.image ?? input?.image_url
   if (!isT2V && !imageValue) {
     return jsonResponse({ error: 'i2vには画像が必要です。' }, 400, corsHeaders)
@@ -817,12 +837,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   const imageName = String(input?.image_name ?? 'input.png')
-  const workflow = clone(await getWorkflowTemplate(isT2V ? 't2v' : 'i2v'))
+  const workflow = clone(await getWorkflowTemplate(isT2V ? 't2v' : 'i2v', workflowFlavor))
   if (!workflow || Object.keys(workflow).length === 0) {
     return jsonResponse({ error: 'wan workflow is empty. Export a ComfyUI API workflow.' }, 500, corsHeaders)
   }
 
-  const nodeMap = await getNodeMap(isT2V ? 't2v' : 'i2v').catch(() => null)
+  const nodeMap = await getNodeMap(isT2V ? 't2v' : 'i2v', workflowFlavor).catch(() => null)
   const hasNodeMap = nodeMap && Object.keys(nodeMap).length > 0
   if (!hasNodeMap) {
     return jsonResponse({ error: 'wan node map is empty.' }, 500, corsHeaders)
@@ -922,4 +942,3 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 }
-

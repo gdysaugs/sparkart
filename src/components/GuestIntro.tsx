@@ -4,10 +4,20 @@
   onEmailLogin?: () => void
 }
 
+import './guest-intro.css'
+
 const ASSETS = {
   upload: '/media/guest-step-upload.webp?v=20260301-1',
   output: '/media/guest-step-length.mp4?v=20260301-1',
 }
+
+const EDIT_SHOWCASE = {
+  main: '/media/sparkart-edit-main.avif?v=20260302-1',
+  reference: '/media/sparkart-edit-reference.avif?v=20260302-1',
+  result: '/media/sparkart-edit-result.png?v=20260302-1',
+}
+
+const EDIT_SHOWCASE_PROMPT = 'メイン画像の女と参考画像の女が抱き合う'
 
 const HERO_ORBIT_VIDEOS = [
   '/media/hero-orbit-1.mp4?v=20260301-1',
@@ -146,6 +156,35 @@ export function GuestIntro({ mode: _mode, onSignIn, onEmailLogin }: GuestIntroPr
           <div className='pulse-flow__media'>
             <video src={ASSETS.output} autoPlay loop muted playsInline preload='metadata' />
           </div>
+        </div>
+      </section>
+
+      <section className='sparkart-edit-promo'>
+        <div className='sparkart-edit-promo__copy'>
+          <p className='sparkart-edit-promo__kicker'>圧倒的な画像編集機能</p>
+          <h2>1枚または2枚の画像と1行の指示で、狙った編集結果を一発生成</h2>
+          <p>
+            SparkMotionのImage Editは、メイン画像と参考画像の特徴を保ちながら、プロンプトどおりの構図へ強力に変換します。
+          </p>
+          <div className='sparkart-edit-promo__prompt'>
+            <span>実際の入力プロンプト</span>
+            <strong>{EDIT_SHOWCASE_PROMPT}</strong>
+          </div>
+        </div>
+
+        <div className='sparkart-edit-promo__grid'>
+          <figure className='sparkart-edit-promo__card'>
+            <img src={EDIT_SHOWCASE.main} alt='メイン画像サンプル' loading='lazy' />
+            <figcaption>メイン画像</figcaption>
+          </figure>
+          <figure className='sparkart-edit-promo__card'>
+            <img src={EDIT_SHOWCASE.reference} alt='参考画像サンプル' loading='lazy' />
+            <figcaption>参考画像</figcaption>
+          </figure>
+          <figure className='sparkart-edit-promo__card sparkart-edit-promo__card--result'>
+            <img src={EDIT_SHOWCASE.result} alt='画像編集の生成結果' loading='lazy' />
+            <figcaption>生成結果</figcaption>
+          </figure>
         </div>
       </section>
 
