@@ -311,6 +311,27 @@ export function Camera() {
   const isI2vMode = generationMode === 'i2v'
   const generationLabel = isI2vMode ? '動画生成' : '画像生成'
 
+  const getLatestAccessToken = useCallback(async () => {
+    if (!supabase) return accessToken
+
+    const current = await supabase.auth.getSession()
+    if (current?.data?.session?.access_token) {
+      const nextSession = current.data.session
+      if (!session || session.access_token !== nextSession.access_token) {
+        setSession(nextSession)
+      }
+      return nextSession.access_token
+    }
+
+    const refreshed = await supabase.auth.refreshSession()
+    if (refreshed?.data?.session?.access_token) {
+      setSession(refreshed.data.session)
+      return refreshed.data.session.access_token
+    }
+
+    return ''
+  }, [accessToken, session])
+
   const viewerStyle = useMemo(
     () =>
       ({
@@ -386,17 +407,36 @@ export function Camera() {
 
   const fetchTickets = useCallback(
     async (token: string) => {
-      if (!token) return
+      if (!token) return null
       setTicketStatus('loading')
       setTicketMessage('')
-      const res = await fetch('/api/tickets', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json().catch(() => ({}))
+      const requestTickets = async (authToken: string) => {
+        const res = await fetch('/api/tickets', {
+          headers: { Authorization: `Bearer ${authToken}` },
+        })
+        const data = await res.json().catch(() => ({}))
+        return { res, data }
+      }
+
+      let activeToken = token
+      let { res, data } = await requestTickets(activeToken)
+
+      if (res.status === 401) {
+        const refreshedToken = await getLatestAccessToken()
+        if (refreshedToken && refreshedToken !== activeToken) {
+          activeToken = refreshedToken
+          ;({ res, data } = await requestTickets(activeToken))
+        }
+      }
+
       if (!res.ok) {
         setTicketStatus('error')
-        setTicketMessage(data?.error || 'コイン残高の取得に失敗しました。')
-        setTicketCount(null)
+        if (res.status === 401) {
+          setTicketMessage('セッション期限が切れました。再ログインしてください。')
+          setSession(null)
+        } else {
+          setTicketMessage(data?.error || 'コイン残高の取得に失敗しました。')
+        }
         return null
       }
       const nextCount = Number(data?.tickets ?? 0)
@@ -405,7 +445,7 @@ export function Camera() {
       setTicketCount(nextCount)
       return nextCount
     },
-    [],
+    [getLatestAccessToken],
   )
 
   const fetchDailyBonus = useCallback(async (token: string) => {
@@ -565,25 +605,20 @@ export function Camera() {
       setStatusMessage('コイン確認中...')
       return false
     }
-    if (accessToken) {
+    const token = accessToken || (await getLatestAccessToken())
+    if (token) {
       setStatusMessage('コイン確認中...')
-      const latestCount = await fetchTickets(accessToken)
-      if (latestCount !== null && latestCount < selectedTicketCost) {
+      const latestCount = await fetchTickets(token)
+      if (typeof latestCount === 'number' && latestCount < selectedTicketCost) {
         setShowTicketModal(true)
         return false
       }
       return true
     }
-    if (ticketCount === null) {
-      setStatusMessage('コイン確認中...')
-      return false
-    }
-    if (ticketCount < selectedTicketCost) {
-      setShowTicketModal(true)
-      return false
-    }
-    return true
-  }, [accessToken, fetchTickets, selectedTicketCost, session, ticketCount, ticketStatus])
+    setStatusMessage('ログインセッションを確認できません。再ログインしてください。')
+    setSession(null)
+    return false
+  }, [accessToken, fetchTickets, getLatestAccessToken, selectedTicketCost, session, ticketStatus])
 
   const startBatch = useCallback(async () => {
     const hasTicket = await ensureTicketsForGeneration()
@@ -605,18 +640,24 @@ export function Camera() {
           ),
         )
         try {
-          const submitted = await submitVideo(accessToken)
+          const token = accessToken || (await getLatestAccessToken())
+          if (!token) {
+            throw new Error('ログインセッションを確認できません。再ログインしてください。')
+          }
+          const submitted = await submitVideo(token)
           if (runIdRef.current !== runId) return
-          if ('videos' in submitted && submitted.videos.length) {
+          if ('videos' in submitted && Array.isArray(submitted.videos) && submitted.videos.length > 0) {
+            const firstVideo = submitted.videos[0]
+            if (!firstVideo) return
             setResults((prev) =>
               prev.map((item, itemIndex) =>
-                itemIndex === 0 ? { ...item, status: 'done' as const, video: submitted.videos[0] } : item,
+                itemIndex === 0 ? { ...item, status: 'done' as const, video: firstVideo } : item,
               ),
             )
             return
           }
           if ('jobId' in submitted) {
-            const polled = await pollJob(submitted.jobId, runId, accessToken, videoEngine)
+            const polled = await pollJob(submitted.jobId, runId, token, videoEngine)
             if (runIdRef.current !== runId) return
             if (polled.status === 'done' && polled.videos.length) {
               setResults((prev) =>
@@ -647,8 +688,9 @@ export function Camera() {
       await runQueue(tasks, MAX_PARALLEL)
       if (runIdRef.current === runId) {
         setStatusMessage('完了')
-        if (accessToken) {
-          void fetchTickets(accessToken)
+        const token = accessToken || (await getLatestAccessToken())
+        if (token) {
+          void fetchTickets(token)
         }
       }
     } catch (error) {
@@ -661,7 +703,7 @@ export function Camera() {
         setIsRunning(false)
       }
     }
-  }, [accessToken, ensureTicketsForGeneration, fetchTickets, pollJob, submitVideo, videoEngine])
+  }, [accessToken, ensureTicketsForGeneration, fetchTickets, getLatestAccessToken, pollJob, submitVideo, videoEngine])
 
   const handleGenerate = async () => {
     if (!sourceImageFile) {
