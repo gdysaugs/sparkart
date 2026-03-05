@@ -61,11 +61,12 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_PROMPT_LENGTH = 1000
 const MAX_NEGATIVE_PROMPT_LENGTH = 1000
 const FIXED_STEPS = 4
+const RAPID_I2V_FIXED_STEPS = 4
 const MIN_DIMENSION = 256
 const MAX_DIMENSION = 3000
 const MIN_CFG = 0
 const MAX_CFG = 10
-const FIXED_FPS = 10
+const FIXED_FPS = 12
 const DEFAULT_SECONDS = 6
 const EIGHT_SECOND_MODE_SECONDS = 8
 const FIXED_SIZE_MULTIPLE = 64
@@ -740,6 +741,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
   const isT2V = mode === 't2v'
   const workflowFlavor = resolveWorkflowFlavor(request)
+  if (workflowFlavor === 'rapid' && isT2V) {
+    return jsonResponse({ error: 'wan-rapid supports i2v only.' }, 400, corsHeaders)
+  }
   const imageValue = input?.image_base64 ?? input?.image ?? input?.image_url
   if (!isT2V && !imageValue) {
     return jsonResponse({ error: 'i2vには画像が必要です。' }, 400, corsHeaders)
@@ -781,14 +785,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   const prompt = String(input?.prompt ?? input?.text ?? '')
   const negativePrompt = String(input?.negative_prompt ?? input?.negative ?? '')
-  const steps = FIXED_STEPS
+  const steps = !isT2V && workflowFlavor === 'rapid' ? RAPID_I2V_FIXED_STEPS : FIXED_STEPS
   const cfg = 1
   const requestedWidth = Math.floor(Number(input?.width ?? DEFAULT_WIDTH))
   const requestedHeight = Math.floor(Number(input?.height ?? DEFAULT_HEIGHT))
   const seconds = normalizeSeconds(input?.seconds ?? DEFAULT_SECONDS)
   const ticketCost = ticketCostForSeconds(seconds)
   const fps = FIXED_FPS
-  const numFrames = FIXED_FPS * seconds
+  const numFrames =
+    !isT2V && workflowFlavor === 'rapid' ? FIXED_FPS * seconds + 1 : FIXED_FPS * seconds
   const seed = input?.randomize_seed
     ? Math.floor(Math.random() * 2147483647)
     : Number(input?.seed ?? 0)
@@ -818,7 +823,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
   const { width, height } = toSafeDimensions(requestedWidth, requestedHeight, FIXED_MAX_LONG_SIDE)
   const totalSteps = Math.max(1, Math.floor(steps))
-  const splitStep = Math.max(1, Math.floor(totalSteps / 2))
+  const splitStep =
+    !isT2V && workflowFlavor === 'rapid'
+      ? Math.max(1, Math.floor(totalSteps / 3))
+      : Math.max(1, Math.floor(totalSteps / 2))
 
   const ticketMeta = {
     prompt_length: prompt.length,

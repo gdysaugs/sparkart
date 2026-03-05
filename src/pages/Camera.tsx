@@ -29,7 +29,7 @@ const API_ENDPOINTS: Record<VideoEngine, string> = {
   remix: '/api/wan-remix',
   rapid: '/api/wan-rapid',
 }
-const FIXED_FPS = 10
+const FIXED_FPS = 12
 const FIXED_VIDEO_SECONDS = 6
 const FIXED_STEPS = 4
 const DEFAULT_CFG = 1
@@ -41,7 +41,7 @@ const FIXED_MIN_SIDE = 256
 const FIXED_SIZE_MULTIPLE = 64
 const BONUS_ROULETTE_VALUES = [1] as const
 const OAUTH_REDIRECT_URL = getOAuthRedirectUrl()
-const DEFAULT_ENGINE: VideoEngine = 'remix'
+const DEFAULT_ENGINE: VideoEngine = 'rapid'
 const PROMPT_MAX_LENGTH = 1000
 const PROMPT_PLACEHOLDER = '例: 女が両手で胸を揉む'
 const getApiEndpoint = (engine: VideoEngine) => API_ENDPOINTS[engine] ?? API_ENDPOINTS.remix
@@ -69,14 +69,6 @@ const makeId = () => {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-const fileToDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
-    reader.onerror = () => reject(new Error('Failed to read image.'))
-    reader.readAsDataURL(file)
-  })
-
 const getImageSize = (file: File) =>
   new Promise<{ width: number; height: number }>((resolve, reject) => {
     const url = URL.createObjectURL(file)
@@ -90,6 +82,33 @@ const getImageSize = (file: File) =>
     image.onerror = () => {
       URL.revokeObjectURL(url)
       reject(new Error('Failed to read image size.'))
+    }
+    image.src = url
+  })
+
+const fileToResizedPngDataUrl = (file: File, width: number, height: number) =>
+  new Promise<string>((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const image = new Image()
+    image.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        URL.revokeObjectURL(url)
+        reject(new Error('Failed to create image canvas.'))
+        return
+      }
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(image, 0, 0, width, height)
+      URL.revokeObjectURL(url)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Failed to resize image.'))
     }
     image.src = url
   })
@@ -486,11 +505,11 @@ export function Camera() {
       if (!sourceImageFile) {
         throw new Error('Please select an image.')
       }
-      const imageDataUrl = await fileToDataUrl(sourceImageFile)
       const imageSize = await getImageSize(sourceImageFile)
       const dims = toVideoDimensions(imageSize.width, imageSize.height)
+      const imageDataUrl = await fileToResizedPngDataUrl(sourceImageFile, dims.width, dims.height)
       const targetSeconds = FIXED_VIDEO_SECONDS
-      const targetFrameCount = FIXED_FPS * targetSeconds
+      const targetFrameCount = FIXED_FPS * targetSeconds + 1
       const stabilizedPrompt = `${prompt}, keep same person identity, keep same face, keep same camera distance, no zoom in`
       const stabilizedNegative = [negativePrompt, 'zoom in, close-up, crop, face distortion, identity change']
         .filter(Boolean)
@@ -499,7 +518,7 @@ export function Camera() {
         engine: videoEngine,
         mode: 'i2v',
         image: imageDataUrl,
-        image_name: sourceImageFile.name || 'input.png',
+        image_name: 'input.png',
         prompt: stabilizedPrompt,
         negative_prompt: stabilizedNegative,
         width: dims.width,
@@ -937,7 +956,7 @@ export function Camera() {
             <div className="studio-head__copy">
               <h1>I2V</h1>
               <p>
-                1枚の画像から6秒の動画を生成できます。
+                1枚の画像から6秒の動画を生成できます（SmoothMix v2.0）。
               </p>
             </div>
             <div className="studio-mode-switch studio-mode-switch--inline" aria-label="Generation mode switch">
@@ -1054,7 +1073,7 @@ export function Camera() {
                 disabled={isRunning}
               />
               <span className="studio-switch__track" aria-hidden="true" />
-              <strong>{videoEngine === 'rapid' ? 'Neo Spark' : 'Spark'}</strong>
+              <strong>{videoEngine === 'rapid' ? 'SmoothMix v2.0' : 'Spark'}</strong>
             </label>
           </div>
 
@@ -1063,7 +1082,7 @@ export function Camera() {
               {isRunning ? '生成中...' : '動画を生成'}
             </button>
             <small>Sparkはプロンプトに忠実で、動きがより滑らかです。</small>
-            <small>Neo Sparkは、より自由で大胆な動きを重視します。</small>
+            <small>SmoothMix v2.0（High/Low safetensors）ベースです。</small>
             <small>コイン消費: 1回につき1コイン</small>
           </div>
 
@@ -1220,7 +1239,3 @@ export function Camera() {
     </div>
   )
 }
-
-
-
-
