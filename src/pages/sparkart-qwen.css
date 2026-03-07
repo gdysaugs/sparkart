@@ -20,8 +20,8 @@
 .sa-editor-head .studio-head__copy h2 {
   margin: 0;
   color: #e6edf7;
-  font-size: 1.12rem;
-  line-height: 1.2;
+  font-size: clamp(1.4rem, 2.1vw, 2rem);
+  line-height: 1.1;
 }
 
 .sa-upload-grid,

@@ -1475,6 +1475,45 @@
   color: #b6c6d8;
 }
 
+.video-studio-page .nova-hero {
+  border-color: rgba(56, 189, 248, 0.34);
+  background:
+    radial-gradient(circle at 14% 10%, rgba(34, 211, 238, 0.18), transparent 42%),
+    radial-gradient(circle at 86% 90%, rgba(14, 165, 233, 0.16), transparent 46%),
+    linear-gradient(150deg, rgba(13, 24, 43, 0.96), rgba(8, 15, 30, 0.98));
+  box-shadow: 0 24px 46px rgba(2, 6, 23, 0.56);
+}
+
+.video-studio-page .nova-hero__copy h1,
+.video-studio-page .nova-hero__copy p,
+.video-studio-page .nova-hero__eyebrow {
+  color: #e6edf7;
+}
+
+.video-studio-page .nova-hero__chips span {
+  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(11, 31, 52, 0.92);
+  color: #d9f5ff;
+}
+
+.video-studio-page .nova-hero__visual {
+  border-color: rgba(56, 189, 248, 0.34);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(14, 165, 233, 0.18), rgba(8, 15, 30, 0.96) 60%),
+    linear-gradient(180deg, rgba(9, 17, 33, 0.98), rgba(4, 10, 20, 1));
+}
+
+.video-studio-page .nova-face video {
+  border-color: rgba(56, 189, 248, 0.38);
+  box-shadow: 0 14px 28px rgba(2, 6, 23, 0.5);
+}
+
+.video-studio-page .nova-core {
+  border-color: rgba(56, 189, 248, 0.3);
+  background: rgba(10, 20, 37, 0.44);
+  box-shadow: 0 10px 22px rgba(2, 6, 23, 0.5);
+}
+
 .video-studio-page .guest-headline h1 {
   color: #e6edf7;
   text-shadow: 0 12px 26px rgba(14, 165, 233, 0.18);
