@@ -81,6 +81,26 @@ const extractErrorMessage = (payload: any) =>
   payload?.output?.output?.error ||
   payload?.result?.output?.error
 
+const GENERIC_RETRY_MESSAGE = 'エラーです。やり直してください。'
+
+const shouldMaskErrorMessage = (value: string) => {
+  const text = String(value || '').trim()
+  if (!text) return false
+  const lowered = text.toLowerCase()
+  const isJsonLike =
+    (text.startsWith('{') && text.endsWith('}')) ||
+    (text.startsWith('[') && text.endsWith(']'))
+  const hasModelHints =
+    lowered.includes('workflow validation failed') ||
+    lowered.includes('.safetensors') ||
+    lowered.includes('.gguf') ||
+    lowered.includes('class_type') ||
+    lowered.includes('unetloader') ||
+    lowered.includes('/comfyui/') ||
+    (lowered.includes('node ') && lowered.includes('not found'))
+  return isJsonLike || hasModelHints
+}
+
 const normalizeErrorMessage = (value: unknown) => {
   if (!value) return 'リクエストに失敗しました。'
   if (typeof value === 'object') {
@@ -100,6 +120,7 @@ const normalizeErrorMessage = (value: unknown) => {
   ) {
     return '画像サイズエラーです。サイズの小さい画像で再生成してください。'
   }
+  if (shouldMaskErrorMessage(raw)) return GENERIC_RETRY_MESSAGE
   return raw
 }
 

@@ -192,10 +192,31 @@ const isOomErrorMessage = (value: unknown) => {
   )
 }
 
+const GENERIC_RETRY_MESSAGE = 'エラーです。やり直してください。'
+
+const shouldMaskErrorMessage = (value: string) => {
+  const text = String(value || '').trim()
+  if (!text) return false
+  const lowered = text.toLowerCase()
+  const isJsonLike =
+    (text.startsWith('{') && text.endsWith('}')) ||
+    (text.startsWith('[') && text.endsWith(']'))
+  const hasModelHints =
+    lowered.includes('workflow validation failed') ||
+    lowered.includes('.safetensors') ||
+    lowered.includes('.gguf') ||
+    lowered.includes('class_type') ||
+    lowered.includes('unetloader') ||
+    lowered.includes('/comfyui/') ||
+    (lowered.includes('node ') && lowered.includes('not found'))
+  return isJsonLike || hasModelHints
+}
+
 const normalizeErrorMessage = (value: unknown) => {
   if (isOomErrorMessage(value)) return 'Image size is too large. Please use a smaller image.'
   const text = typeof value === 'string' ? value : value instanceof Error ? value.message : String(value || '')
-  return text || 'Unexpected error.'
+  if (!text) return 'Unexpected error.'
+  return shouldMaskErrorMessage(text) ? GENERIC_RETRY_MESSAGE : text
 }
 
 const extractJobId = (payload: any) => payload?.id || payload?.jobId || payload?.job_id || payload?.output?.id
@@ -762,7 +783,6 @@ export function SparkArtQwen({
               <div className='sa-angle-preview'>
                 <strong>自動追加タグ</strong>
                 <code>{multiAngleTag}</code>
-                <small>生成時にこのタグをプロンプト先頭へ自動追加します。</small>
               </div>
             </>
           ) : (

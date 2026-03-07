@@ -89,6 +89,26 @@ const extractErrorMessage = (payload: any) =>
   payload?.output?.output?.error ||
   payload?.result?.output?.error
 
+const GENERIC_RETRY_MESSAGE = 'エラーです。やり直してください。'
+
+const shouldMaskErrorMessage = (value: string) => {
+  const text = String(value || '').trim()
+  if (!text) return false
+  const lowered = text.toLowerCase()
+  const isJsonLike =
+    (text.startsWith('{') && text.endsWith('}')) ||
+    (text.startsWith('[') && text.endsWith(']'))
+  const hasModelHints =
+    lowered.includes('workflow validation failed') ||
+    lowered.includes('.safetensors') ||
+    lowered.includes('.gguf') ||
+    lowered.includes('class_type') ||
+    lowered.includes('unetloader') ||
+    lowered.includes('/comfyui/') ||
+    (lowered.includes('node ') && lowered.includes('not found'))
+  return isJsonLike || hasModelHints
+}
+
 const normalizeErrorMessage = (value: unknown) => {
   if (!value) return 'Request failed.'
   if (typeof value === 'object') {
@@ -113,11 +133,15 @@ const normalizeErrorMessage = (value: unknown) => {
     try {
       const parsed = JSON.parse(trimmed)
       const message = parsed?.error || parsed?.message || parsed?.detail
-      if (typeof message === 'string' && message) return message
+      if (typeof message === 'string' && message) {
+        return shouldMaskErrorMessage(message) ? GENERIC_RETRY_MESSAGE : message
+      }
+      return GENERIC_RETRY_MESSAGE
     } catch {
-      // ignore parse errors
+      return GENERIC_RETRY_MESSAGE
     }
   }
+  if (shouldMaskErrorMessage(trimmed)) return GENERIC_RETRY_MESSAGE
   return raw
 }
 

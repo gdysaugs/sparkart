@@ -200,6 +200,25 @@ const extractErrorMessage = (payload: any) =>
 
 const POLICY_BLOCK_MESSAGE =
   'This image may violate policy (violence/minor). Please use another image.'
+const GENERIC_RETRY_MESSAGE = 'エラーです。やり直してください。'
+
+const shouldMaskErrorMessage = (value: string) => {
+  const text = String(value || '').trim()
+  if (!text) return false
+  const lowered = text.toLowerCase()
+  const isJsonLike =
+    (text.startsWith('{') && text.endsWith('}')) ||
+    (text.startsWith('[') && text.endsWith(']'))
+  const hasModelHints =
+    lowered.includes('workflow validation failed') ||
+    lowered.includes('.safetensors') ||
+    lowered.includes('.gguf') ||
+    lowered.includes('class_type') ||
+    lowered.includes('unetloader') ||
+    lowered.includes('/comfyui/') ||
+    (lowered.includes('node ') && lowered.includes('not found'))
+  return isJsonLike || hasModelHints
+}
 
 const normalizeErrorMessage = (value: unknown) => {
   if (!value) return 'Request failed.'
@@ -239,11 +258,15 @@ const normalizeErrorMessage = (value: unknown) => {
     try {
       const parsed = JSON.parse(trimmed)
       const message = parsed?.error || parsed?.message || parsed?.detail
-      if (typeof message === 'string' && message) return message
+      if (typeof message === 'string' && message) {
+        return shouldMaskErrorMessage(message) ? GENERIC_RETRY_MESSAGE : message
+      }
+      return GENERIC_RETRY_MESSAGE
     } catch {
-      // ignore parse errors
+      return GENERIC_RETRY_MESSAGE
     }
   }
+  if (shouldMaskErrorMessage(trimmed)) return GENERIC_RETRY_MESSAGE
   return raw
 }
 
@@ -365,6 +388,7 @@ export function Camera() {
   const displayVideo = results[0]?.video ?? null
   const accessToken = session?.access_token ?? ''
   const selectedQuality = QUALITY_PRESETS[qualityIndex] ?? QUALITY_PRESETS[DEFAULT_QUALITY_INDEX]
+  const selectedQualityWithCost = `${selectedQuality.label}(${selectedQuality.cost}コイン)`
   const selectedFps = selectedQuality.fps
   const isI2vMode = generationMode === 'i2v'
   const generationLabel = isI2vMode ? '動画生成' : '画像生成'
@@ -1004,7 +1028,7 @@ export function Camera() {
             <div className="studio-head__copy">
               <h1>I2V</h1>
               <p>
-                1枚の画像から6秒の動画を生成できます（SmoothMix v2.0）。
+                1枚の画像から6秒の動画を生成できます。
               </p>
             </div>
             <div className="studio-mode-switch studio-mode-switch--inline" aria-label="Generation mode switch">
@@ -1126,7 +1150,7 @@ export function Camera() {
                 </button>
               ))}
             </div>
-            <small>{`現在: ${selectedQuality.label}`}</small>
+            <small>{`現在: ${selectedQualityWithCost}`}</small>
           </label>
 
           <div className="studio-engine">
@@ -1147,7 +1171,7 @@ export function Camera() {
             <button type="button" className="primary-button" onClick={handleGenerate} disabled={!canGenerate}>
               {isRunning ? '生成中...' : '動画を生成'}
             </button>
-            <small>{`コイン消費は画質に応じて変わります（現在: ${selectedQuality.label}）`}</small>
+            <small>{`コイン消費は画質に応じて変わります（現在: ${selectedQualityWithCost}）`}</small>
           </div>
 
           <section className="studio-credit-box">
