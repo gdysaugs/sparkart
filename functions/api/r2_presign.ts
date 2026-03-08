@@ -19,6 +19,7 @@ type PresignRequest = {
 }
 
 const corsMethods = 'POST, OPTIONS'
+const INTERNAL_ERROR_MESSAGE = 'エラーです。やり直してください。'
 
 const jsonResponse = (body: unknown, status = 200, headers: HeadersInit = {}) =>
   new Response(JSON.stringify(body), {
@@ -157,8 +158,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       200,
       corsHeaders,
     )
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'unknown_error'
-    return jsonResponse({ error: 'R2署名URLの生成に失敗しました。', message }, 500, corsHeaders)
+  } catch {
+    return jsonResponse({ error: INTERNAL_ERROR_MESSAGE }, 500, corsHeaders)
   }
 }

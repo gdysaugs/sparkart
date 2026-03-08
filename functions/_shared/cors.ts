@@ -8,8 +8,6 @@ const DEFAULT_ALLOWED_ORIGINS = [
   '*.sparkart.pages.dev',
   'https://sparkmotion.work',
   'https://www.sparkmotion.work',
-  'https://ltx2.pages.dev',
-  '*.ltx2.pages.dev',
 ]
 
 const normalize = (value: string) => value.trim().toLowerCase()

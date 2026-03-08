@@ -28,6 +28,21 @@ const jsonResponse = (body: unknown, status = 200, headers: HeadersInit = {}) =>
     headers: { ...headers, 'Content-Type': 'application/json' },
   })
 
+const INTERNAL_ERROR_MESSAGE = 'エラーです。やり直してください。'
+const internalErrorResponse = (
+  corsHeaders: HeadersInit,
+  status = 500,
+  extra?: Record<string, unknown>,
+) =>
+  jsonResponse(
+    {
+      error: INTERNAL_ERROR_MESSAGE,
+      ...(extra ?? {}),
+    },
+    status,
+    corsHeaders,
+  )
+
 const normalizeEndpoint = (value?: string) => {
   if (!value) return ''
   const trimmed = value.trim().replace(/^['"]|['"]$/g, '')
@@ -260,7 +275,7 @@ const ensureTicketAvailable = async (
   const { data: existing, error } = await ensureTicketRow(admin, user)
 
   if (error) {
-    return { response: jsonResponse({ error: error.message }, 500, corsHeaders) }
+    return { response: internalErrorResponse(corsHeaders) }
   }
 
   if (!existing) {
@@ -293,7 +308,7 @@ const consumeTicket = async (
   const { data: existing, error } = await ensureTicketRow(admin, user)
 
   if (error) {
-    return { response: jsonResponse({ error: error.message }, 500, corsHeaders) }
+    return { response: internalErrorResponse(corsHeaders) }
   }
 
   if (!existing) {
@@ -325,7 +340,7 @@ const consumeTicket = async (
     if (message.includes('INVALID')) {
       return { response: jsonResponse({ error: 'Invalid ticket request.' }, 400, corsHeaders) }
     }
-    return { response: jsonResponse({ error: message }, 500, corsHeaders) }
+    return { response: internalErrorResponse(corsHeaders) }
   }
 
   const result = Array.isArray(rpcData) ? rpcData[0] : rpcData
@@ -356,7 +371,7 @@ const refundTicket = async (
     .maybeSingle()
 
   if (chargeError) {
-    return { response: jsonResponse({ error: chargeError.message }, 500, corsHeaders) }
+    return { response: internalErrorResponse(corsHeaders) }
   }
 
   const chargeUserId = chargeEvent?.user_id ? String(chargeEvent.user_id) : ''
@@ -375,7 +390,7 @@ const refundTicket = async (
     .maybeSingle()
 
   if (refundCheckError) {
-    return { response: jsonResponse({ error: refundCheckError.message }, 500, corsHeaders) }
+    return { response: internalErrorResponse(corsHeaders) }
   }
 
   if (existingRefund) {
@@ -385,7 +400,7 @@ const refundTicket = async (
   const { data: existing, error } = await ensureTicketRow(admin, user)
 
   if (error) {
-    return { response: jsonResponse({ error: error.message }, 500, corsHeaders) }
+    return { response: internalErrorResponse(corsHeaders) }
   }
 
   if (!existing) {
@@ -407,9 +422,9 @@ const refundTicket = async (
   if (rpcError) {
     const message = rpcError.message ?? 'Ticket refund failed.'
     if (message.includes('INVALID')) {
-      return { response: jsonResponse({ error: message }, 400, corsHeaders) }
+      return { response: jsonResponse({ error: 'Invalid ticket request.' }, 400, corsHeaders) }
     }
-    return { response: jsonResponse({ error: message }, 500, corsHeaders) }
+    return { response: internalErrorResponse(corsHeaders) }
   }
 
   const result = Array.isArray(rpcData) ? rpcData[0] : rpcData
@@ -434,7 +449,7 @@ const ensureUsageOwnership = async (
     .maybeSingle()
 
   if (chargeError) {
-    return { response: jsonResponse({ error: chargeError.message }, 500, corsHeaders) }
+    return { response: internalErrorResponse(corsHeaders) }
   }
   if (!chargeEvent) {
     return { response: jsonResponse({ error: 'Job not found.' }, 404, corsHeaders) }
@@ -472,7 +487,7 @@ const bindUsageToJobId = async (
     .maybeSingle()
 
   if (chargeError) {
-    return { response: jsonResponse({ error: chargeError.message }, 500, corsHeaders) }
+    return { response: internalErrorResponse(corsHeaders) }
   }
   if (!chargeEvent) {
     return { response: jsonResponse({ error: 'Job not found.' }, 404, corsHeaders) }
@@ -506,7 +521,7 @@ const bindUsageToJobId = async (
     .eq('usage_id', usageId)
 
   if (updateError) {
-    return { response: jsonResponse({ error: updateError.message }, 500, corsHeaders) }
+    return { response: internalErrorResponse(corsHeaders) }
   }
 
   return { ok: true as const }
@@ -725,14 +740,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       headers: { Authorization: `Bearer ${env.RUNPOD_API_KEY}` },
     })
   } catch (error) {
-    return jsonResponse(
-      {
-        error: 'RunPod status request failed.',
-        detail: error instanceof Error ? error.message : 'unknown_error',
-      },
-      502,
-      corsHeaders,
-    )
+    return internalErrorResponse(corsHeaders, 502)
   }
   const raw = await upstream.text()
   let payload: any = null
@@ -768,14 +776,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
   } catch (error) {
-    return jsonResponse(
-      {
-        error: 'Unexpected error in qwen status.',
-        detail: error instanceof Error ? error.message : 'unknown_error',
-      },
-      500,
-      corsHeaders,
-    )
+    return internalErrorResponse(corsHeaders)
   }
 }
 
@@ -853,11 +854,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return jsonResponse({ error: UNDERAGE_BLOCK_MESSAGE }, 400, corsHeaders)
     }
   } catch (error) {
-    return jsonResponse(
-      { error: error instanceof Error ? error.message : 'Age verification failed.' },
-      500,
-      corsHeaders,
-    )
+    return internalErrorResponse(corsHeaders)
   }
 
   const prompt = String(input?.prompt ?? input?.text ?? '')
@@ -1006,12 +1003,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         ticketsLeft = nextTickets
       }
       return jsonResponse(
-        {
-          error: 'Workflow node mapping failed.',
-          detail: error instanceof Error ? error.message : 'unknown_error',
-          usage_id: usageId,
-          ticketsLeft,
-        },
+        { error: INTERNAL_ERROR_MESSAGE, usage_id: usageId, ticketsLeft },
         400,
         corsHeaders,
       )
@@ -1060,12 +1052,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         ticketsLeft = nextTickets
       }
       return jsonResponse(
-        {
-          error: 'RunPod request failed.',
-          detail: error instanceof Error ? error.message : 'unknown_error',
-          usage_id: usageId,
-          ticketsLeft,
-        },
+        { error: INTERNAL_ERROR_MESSAGE, usage_id: usageId, ticketsLeft },
         502,
         corsHeaders,
       )
@@ -1170,12 +1157,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       ticketsLeft = nextTickets
     }
     return jsonResponse(
-      {
-        error: 'RunPod request failed.',
-        detail: error instanceof Error ? error.message : 'unknown_error',
-        usage_id: usageId,
-        ticketsLeft,
-      },
+      { error: INTERNAL_ERROR_MESSAGE, usage_id: usageId, ticketsLeft },
       502,
       corsHeaders,
     )
@@ -1231,14 +1213,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
   return jsonResponse(upstreamPayload, upstream.status, corsHeaders)
   } catch (error) {
-    return jsonResponse(
-      {
-        error: 'Unexpected error in qwen run.',
-        detail: error instanceof Error ? error.message : 'unknown_error',
-      },
-      500,
-      corsHeaders,
-    )
+    return internalErrorResponse(corsHeaders)
   }
 }
 
