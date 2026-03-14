@@ -7,7 +7,6 @@ import {
   type ChangeEvent,
   type CSSProperties,
 } from 'react'
-import { useNavigate } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { isAuthConfigured, supabase } from '../lib/supabaseClient'
 import { getOAuthRedirectUrl } from '../lib/oauthRedirect'
@@ -261,7 +260,6 @@ export function Image() {
   const [showTicketModal, setShowTicketModal] = useState(false)
   const [errorModalMessage, setErrorModalMessage] = useState<string | null>(null)
   const runIdRef = useRef(0)
-  const navigate = useNavigate()
 
   const accessToken = session?.access_token ?? ''
   const canGenerate = Boolean(sourcePayload) && prompt.trim().length > 0 && !isRunning
@@ -540,10 +538,6 @@ export function Image() {
     window.alert('OAuth URLの取得に失敗しました。')
   }
 
-  const handleEmailLoginNavigate = () => {
-    navigate('/email-login')
-  }
-
   const clearImage = () => {
     setSourcePreview(null)
     setSourcePayload(null)
@@ -612,7 +606,7 @@ export function Image() {
     return (
       <div className="camera-app">
         <TopNav />
-        <GuestIntro mode="image" onSignIn={handleGoogleSignIn} onEmailLogin={handleEmailLoginNavigate} />
+        <GuestIntro mode="image" onSignIn={handleGoogleSignIn} />
       </div>
     )
   }

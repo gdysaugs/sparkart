@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { useNavigate } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { GuestIntro } from '../components/GuestIntro'
 import { TopNav } from '../components/TopNav'
@@ -205,7 +204,6 @@ export function TextImage() {
   const [showTicketModal, setShowTicketModal] = useState(false)
   const [errorModalMessage, setErrorModalMessage] = useState<string | null>(null)
   const runIdRef = useRef(0)
-  const navigate = useNavigate()
 
   const accessToken = session?.access_token ?? ''
   const canGenerate = prompt.trim().length > 0
@@ -482,10 +480,6 @@ export function TextImage() {
     window.alert('OAuth URLの取得に失敗しました。')
   }
 
-  const handleEmailLoginNavigate = () => {
-    navigate('/email-login')
-  }
-
   const handleDownload = useCallback(async () => {
     if (!displayImage) return
     const filename = 'image-result.png'
@@ -525,7 +519,7 @@ export function TextImage() {
     return (
       <div className='camera-app camera-app--guest'>
         <TopNav />
-        <GuestIntro mode='image' onSignIn={handleGoogleSignIn} onEmailLogin={handleEmailLoginNavigate} />
+        <GuestIntro mode='image' onSignIn={handleGoogleSignIn} />
       </div>
     )
   }

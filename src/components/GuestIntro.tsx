@@ -1,7 +1,6 @@
 ﻿type GuestIntroProps = {
   mode: 'image' | 'video'
   onSignIn: () => void
-  onEmailLogin?: () => void
 }
 
 import './guest-intro.css'
@@ -104,7 +103,7 @@ const USER_VOICES = [
   },
 ]
 
-export function GuestIntro({ mode: _mode, onSignIn, onEmailLogin }: GuestIntroProps) {
+export function GuestIntro({ mode: _mode, onSignIn }: GuestIntroProps) {
   return (
     <div className='pulse-landing'>
       <section className='nova-hero nova-hero--fullbleed'>
@@ -119,15 +118,6 @@ export function GuestIntro({ mode: _mode, onSignIn, onEmailLogin }: GuestIntroPr
               <button type='button' className='primary-button primary-button--glow primary-button--pink' onClick={onSignIn}>
                 Googleログイン
               </button>
-              {onEmailLogin && (
-                <button
-                  type='button'
-                  className='primary-button primary-button--glow primary-button--email'
-                  onClick={onEmailLogin}
-                >
-                  メールでログイン
-                </button>
-              )}
             </div>
           </div>
 

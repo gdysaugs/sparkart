@@ -833,10 +833,6 @@ export function Camera() {
     window.alert('Failed to get auth URL.')
   }
 
-  const handleEmailLogin = () => {
-    window.location.assign('/email-login')
-  }
-
   const handleSignOut = async () => {
     if (!supabase) return
     await signOutSafely()
@@ -1015,7 +1011,7 @@ export function Camera() {
   if (!session) {
     return (
       <div className="camera-app camera-app--guest video-studio-page">
-        <GuestIntro mode="video" onSignIn={handleGoogleSignIn} onEmailLogin={handleEmailLogin} />
+        <GuestIntro mode="video" onSignIn={handleGoogleSignIn} />
       </div>
     )
   }

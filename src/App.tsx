@@ -1,5 +1,4 @@
 ﻿import { Navigate, Route, Routes } from 'react-router-dom'
-import { EmailLogin } from './pages/EmailLogin'
 import { Video } from './pages/Video'
 
 export function App() {
@@ -9,7 +8,6 @@ export function App() {
       <Route path='/video' element={<Video />} />
       <Route path='/sparkart' element={<Navigate to='/video' replace />} />
       <Route path='/purchase' element={<Navigate to='/video' replace />} />
-      <Route path='/email-login' element={<EmailLogin />} />
       <Route path='*' element={<Navigate to='/' replace />} />
     </Routes>
   )
