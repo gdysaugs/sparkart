@@ -10,6 +10,7 @@ import type { Session } from '@supabase/supabase-js'
 import { isAuthConfigured, signOutSafely, supabase } from '../lib/supabaseClient'
 import { getOAuthRedirectUrl } from '../lib/oauthRedirect'
 import { GuestIntro } from '../components/GuestIntro'
+import { TopNav } from '../components/TopNav'
 import { SparkArtQwen } from './SparkArtQwen'
 import './camera.css'
 import './video-studio.css'
@@ -58,8 +59,6 @@ const DEFAULT_ENGINE: VideoEngine = 'rapid'
 const PROMPT_MAX_LENGTH = 1000
 const PROMPT_PLACEHOLDER = '例: 女が両手で胸を揉む'
 const getApiEndpoint = (engine: VideoEngine) => API_ENDPOINTS[engine] ?? API_ENDPOINTS.remix
-const COIN_PURCHASE_URL = 'https://checkoutcoins2.win/purchase.html'
-const SPARKMOTION_URL = 'https://sparkmotion.work/'
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -378,7 +377,6 @@ export function Camera() {
   const [bonusRouletteValue, setBonusRouletteValue] = useState<number>(BONUS_ROULETTE_VALUES[0])
   const [bonusRouletteRolling, setBonusRouletteRolling] = useState(false)
   const [bonusRouletteAwarded, setBonusRouletteAwarded] = useState<number | null>(null)
-  const [showPurchaseConfirmModal, setShowPurchaseConfirmModal] = useState(false)
   const runIdRef = useRef(0)
   const bonusRouletteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const sourceImageInputRef = useRef<HTMLInputElement | null>(null)
@@ -846,18 +844,6 @@ export function Camera() {
     setBonusNextEligibleAt(null)
   }
 
-  const handleOpenPurchaseConfirm = () => {
-    setShowPurchaseConfirmModal(true)
-  }
-
-  const handleConfirmPurchaseMove = () => {
-    setShowPurchaseConfirmModal(false)
-    const popup = window.open(COIN_PURCHASE_URL, '_blank')
-    if (popup) {
-      popup.opener = null
-    }
-  }
-
   const formatDateTime = (value: string | null) => {
     if (!value) return ''
     const date = new Date(value)
@@ -1018,6 +1004,7 @@ export function Camera() {
 
   return (
     <div className="camera-app video-studio-page">
+      <TopNav />
       {isI2vMode ? (
       <div className="video-studio-layout">
         <section className="studio-block studio-block--input">
@@ -1052,19 +1039,6 @@ export function Camera() {
               {ticketStatus === 'loading' && 'コイン確認中...'}
               {ticketStatus !== 'loading' && `保有コイン数 ${ticketCount ?? 0}枚` }
               {ticketStatus === 'error' && ticketMessage ? ` / ${ticketMessage}` : ''}
-            </div>
-            <div className="studio-ticket-actions">
-              <button type="button" className="ghost-button studio-buy-button" onClick={handleOpenPurchaseConfirm}>
-                コインを購入する
-              </button>
-              <a
-                className="ghost-button studio-sparkmotion-button"
-                href={SPARKMOTION_URL}
-                target="_blank"
-                rel="noreferrer"
-              >
-                SparkMotionを使う
-              </a>
             </div>
           </div>
 
@@ -1262,7 +1236,6 @@ export function Camera() {
             ticketStatus={ticketStatus}
             ticketCount={ticketCount}
             ticketMessage={ticketMessage}
-            onOpenPurchaseConfirm={handleOpenPurchaseConfirm}
             bonusStatus={bonusStatus}
             bonusCanClaim={bonusCanClaim}
             bonusNextEligibleAt={bonusNextEligibleAt}
@@ -1310,22 +1283,6 @@ export function Camera() {
             <div className="modal-actions">
               <button type="button" className="primary-button" onClick={() => setErrorModalMessage(null)}>
                 閉じる
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {showPurchaseConfirmModal && (
-        <div className="modal-overlay" role="dialog" aria-modal="true">
-          <div className="modal-card">
-            <h3>購入ページへ移動</h3>
-            <p>購入ページに移動します。表示されたページで再度ログインしてください。購入ページで購入したコインは即座にSpark Artにも反映されます。</p>
-            <div className="modal-actions">
-              <button type="button" className="primary-button" onClick={handleConfirmPurchaseMove}>
-                はい
-              </button>
-              <button type="button" className="ghost-button" onClick={() => setShowPurchaseConfirmModal(false)}>
-                キャンセル
               </button>
             </div>
           </div>

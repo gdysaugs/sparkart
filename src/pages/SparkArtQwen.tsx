@@ -11,7 +11,6 @@ const CFG_MAX = 2
 const CFG_STEP = 0.1
 const PROMPT_MAX_LENGTH = 1000
 const PROMPT_PLACEHOLDER = '例: 女が両手で胸を揉む'
-const SPARKMOTION_URL = 'https://sparkmotion.work/'
 type GenerationMode = 'i2v' | 'qwen_edit'
 type MultiAngleOption = {
   key: string
@@ -50,7 +49,6 @@ type SparkArtQwenProps = {
   ticketStatus: 'idle' | 'loading' | 'error'
   ticketCount: number | null
   ticketMessage: string
-  onOpenPurchaseConfirm: () => void
   bonusStatus: 'idle' | 'loading' | 'error'
   bonusCanClaim: boolean
   bonusNextEligibleAt: string | null
@@ -296,7 +294,6 @@ export function SparkArtQwen({
   ticketStatus,
   ticketCount,
   ticketMessage,
-  onOpenPurchaseConfirm,
   bonusStatus,
   bonusCanClaim,
   bonusNextEligibleAt,
@@ -619,14 +616,6 @@ export function SparkArtQwen({
             {ticketStatus === 'loading' && 'コイン確認中...'}
             {ticketStatus !== 'loading' && `保有コイン数 ${ticketCount ?? 0}枚`}
             {ticketStatus === 'error' && ticketMessage ? ` / ${ticketMessage}` : ''}
-          </div>
-          <div className='studio-ticket-actions'>
-            <button type='button' className='ghost-button studio-buy-button' onClick={onOpenPurchaseConfirm}>
-              コインを購入する
-            </button>
-            <a className='ghost-button studio-sparkmotion-button' href={SPARKMOTION_URL} target='_blank' rel='noreferrer'>
-              SparkMotionを使う
-            </a>
           </div>
         </div>
 
