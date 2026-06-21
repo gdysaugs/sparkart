@@ -87,10 +87,11 @@ const HIGH_QUALITY_FPS = 12
 const ALLOWED_FPS = [LOW_QUALITY_FPS, MEDIUM_QUALITY_FPS, HIGH_QUALITY_FPS] as const
 const DEFAULT_FPS = MEDIUM_QUALITY_FPS
 const DEFAULT_SECONDS = 6
-const FIXED_SIZE_MULTIPLE = 64
-const FIXED_MAX_LONG_SIDE = 768
-const DEFAULT_WIDTH = 768
-const DEFAULT_HEIGHT = 448
+const FIXED_SIZE_MULTIPLE = 16
+const LANDSCAPE_MAX = { width: 640, height: 464 } as const
+const PORTRAIT_MAX = { width: 464, height: 640 } as const
+const DEFAULT_WIDTH = LANDSCAPE_MAX.width
+const DEFAULT_HEIGHT = LANDSCAPE_MAX.height
 const UNDERAGE_BLOCK_MESSAGE =
   'この画像には暴力的な表現、低年齢、または規約違反の可能性があります。別の画像でお試しください。'
 
@@ -576,18 +577,28 @@ const extractFpsFromPayload = (payload: any) => {
   return DEFAULT_FPS
 }
 
-const clampDimension = (value: number, maxLongSide: number) => {
+const clampDimension = (value: number, maxSize: number) => {
   const rounded = Math.round(value / FIXED_SIZE_MULTIPLE) * FIXED_SIZE_MULTIPLE
-  return Math.max(MIN_DIMENSION, Math.min(maxLongSide, rounded))
+  return Math.max(FIXED_SIZE_MULTIPLE, Math.min(maxSize, rounded))
 }
 
-const toSafeDimensions = (width: number, height: number, maxLongSide: number) => {
-  const longest = Math.max(width, height)
-  const scale = longest > maxLongSide ? maxLongSide / longest : 1
-  return {
-    width: clampDimension(width * scale, maxLongSide),
-    height: clampDimension(height * scale, maxLongSide),
+const toSafeDimensions = (width: number, height: number) => {
+  const isPortrait = height >= width
+  const bounds = isPortrait ? PORTRAIT_MAX : LANDSCAPE_MAX
+  const scale = Math.min(1, bounds.width / width, bounds.height / height)
+  const scaledWidth = width * scale
+  const scaledHeight = height * scale
+  const aspect = width / height
+
+  if (aspect >= 1) {
+    const targetWidth = clampDimension(scaledWidth, bounds.width)
+    const targetHeight = clampDimension(targetWidth / aspect, bounds.height)
+    return { width: targetWidth, height: targetHeight }
   }
+
+  const targetHeight = clampDimension(scaledHeight, bounds.height)
+  const targetWidth = clampDimension(targetHeight * aspect, bounds.width)
+  return { width: targetWidth, height: targetHeight }
 }
 
 const ensureBase64Input = (label: string, value: unknown) => {
@@ -858,7 +869,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       corsHeaders,
     )
   }
-  const { width, height } = toSafeDimensions(requestedWidth, requestedHeight, FIXED_MAX_LONG_SIDE)
+  const { width, height } = toSafeDimensions(requestedWidth, requestedHeight)
   const totalSteps = Math.max(1, Math.floor(steps))
   const splitStep =
     !isT2V && workflowFlavor === 'rapid'

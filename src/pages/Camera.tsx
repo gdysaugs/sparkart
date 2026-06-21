@@ -50,9 +50,9 @@ const DEFAULT_CFG = 1
 const CFG_MIN = 0.1
 const CFG_MAX = 2
 const CFG_STEP = 0.1
-const FIXED_MAX_LONG_SIDE = 768
-const FIXED_MIN_SIDE = 256
-const FIXED_SIZE_MULTIPLE = 64
+const FIXED_SIZE_MULTIPLE = 16
+const LANDSCAPE_MAX = { width: 640, height: 464 } as const
+const PORTRAIT_MAX = { width: 464, height: 640 } as const
 const BONUS_ROULETTE_VALUES = [1] as const
 const OAUTH_REDIRECT_URL = getOAuthRedirectUrl()
 const DEFAULT_ENGINE: VideoEngine = 'rapid'
@@ -126,20 +126,28 @@ const fileToResizedPngDataUrl = (file: File, width: number, height: number) =>
     image.src = url
   })
 
-const clampDimension = (value: number) => {
+const clampDimension = (value: number, maxSize: number) => {
   const rounded = Math.round(value / FIXED_SIZE_MULTIPLE) * FIXED_SIZE_MULTIPLE
-  return Math.max(FIXED_MIN_SIDE, Math.min(3000, rounded))
+  return Math.max(FIXED_SIZE_MULTIPLE, Math.min(maxSize, rounded))
 }
 
 const toVideoDimensions = (width: number, height: number) => {
-  const longest = Math.max(width, height)
-  const scale = longest > FIXED_MAX_LONG_SIDE ? FIXED_MAX_LONG_SIDE / longest : 1
+  const isPortrait = height >= width
+  const bounds = isPortrait ? PORTRAIT_MAX : LANDSCAPE_MAX
+  const scale = Math.min(1, bounds.width / width, bounds.height / height)
   const scaledWidth = width * scale
   const scaledHeight = height * scale
-  return {
-    width: clampDimension(scaledWidth),
-    height: clampDimension(scaledHeight),
+  const aspect = width / height
+
+  if (aspect >= 1) {
+    const targetWidth = clampDimension(scaledWidth, bounds.width)
+    const targetHeight = clampDimension(targetWidth / aspect, bounds.height)
+    return { width: targetWidth, height: targetHeight }
   }
+
+  const targetHeight = clampDimension(scaledHeight, bounds.height)
+  const targetWidth = clampDimension(targetHeight * aspect, bounds.width)
+  return { width: targetWidth, height: targetHeight }
 }
 
 const normalizeVideo = (value: unknown, filename?: string) => {
