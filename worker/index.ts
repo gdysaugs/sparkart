@@ -11,6 +11,18 @@ import { onRequestGet as ticketsGet, onRequestOptions as ticketsOptions } from '
 import { onRequestGet as dailyBonusGet, onRequestPost as dailyBonusPost, onRequestOptions as dailyBonusOptions } from '../functions/api/daily_bonus'
 import { onRequestPost as r2PresignPost, onRequestOptions as r2PresignOptions } from '../functions/api/r2_presign'
 import { onRequestGet as publicConfigGet } from '../functions/api/public_config'
+import {
+  onRequestPost as stripeCheckoutPost,
+  onRequestOptions as stripeCheckoutOptions,
+} from '../functions/api/stripe/checkout'
+import {
+  onRequestPost as stripeConfirmPost,
+  onRequestOptions as stripeConfirmOptions,
+} from '../functions/api/stripe/confirm'
+import {
+  onRequestPost as stripeWebhookPost,
+  onRequestOptions as stripeWebhookOptions,
+} from '../functions/api/stripe/webhook'
 
 type Env = {
   RUNPOD_API_KEY: string
@@ -26,11 +38,16 @@ type Env = {
   R2_SECRET_ACCESS_KEY?: string
   R2_REGION?: string
   SUPABASE_URL?: string
+  SUPABASE_ANON_KEY?: string
   SUPABASE_SERVICE_ROLE_KEY?: string
   STRIPE_SECRET_KEY?: string
   STRIPE_WEBHOOK_SECRET?: string
+  STRIPE_WEBHOOK_TOLERANCE_SEC?: string
   STRIPE_SUCCESS_URL?: string
   STRIPE_CANCEL_URL?: string
+  STRIPE_RETURN_ORIGIN?: string
+  STRIPE_PRICE_TO_COINS_MAP?: string
+  STRIPE_PRICE_TO_COINS_JSON?: string
   CORS_ALLOWED_ORIGINS?: string
   VITE_SUPABASE_URL?: string
   VITE_SUPABASE_ANON_KEY?: string
@@ -44,18 +61,6 @@ type PagesArgs = {
 
 const notFound = () => new Response('Not Found', { status: 404 })
 const methodNotAllowed = () => new Response('Method Not Allowed', { status: 405 })
-const deprecatedStripeEndpoint = () =>
-  new Response(
-    JSON.stringify({
-      error: 'Deprecated endpoint.',
-      message: 'Use https://checkoutcoins.uk for coin purchase and Stripe webhook handling.',
-    }),
-    {
-      status: 410,
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    },
-  )
-
 export default {
   async fetch(request: Request, env: Env) {
     const url = new URL(request.url)
@@ -123,12 +128,20 @@ export default {
     }
 
     if (path.startsWith('/api/stripe/checkout')) {
-      if (method === 'OPTIONS' || method === 'POST') return deprecatedStripeEndpoint()
+      if (method === 'OPTIONS') return stripeCheckoutOptions(args as any)
+      if (method === 'POST') return stripeCheckoutPost(args as any)
+      return methodNotAllowed()
+    }
+
+    if (path.startsWith('/api/stripe/confirm')) {
+      if (method === 'OPTIONS') return stripeConfirmOptions(args as any)
+      if (method === 'POST') return stripeConfirmPost(args as any)
       return methodNotAllowed()
     }
 
     if (path.startsWith('/api/stripe/webhook')) {
-      if (method === 'OPTIONS' || method === 'POST') return deprecatedStripeEndpoint()
+      if (method === 'OPTIONS') return stripeWebhookOptions(args as any)
+      if (method === 'POST') return stripeWebhookPost(args as any)
       return methodNotAllowed()
     }
 

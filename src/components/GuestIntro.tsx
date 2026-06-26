@@ -6,40 +6,38 @@
 import './guest-intro.css'
 
 const ASSETS = {
-  upload: '/media/guest-step-upload.avif?v=20260307-1',
-  output: '/media/guest-step-length-14.mp4?v=20260307-1',
+  upload: '/media/sparkart-step-upload-20260627.avif?v=20260627-1',
+  output: '/media/sparkart-step-length-20260627.mp4?v=20260627-1',
 }
 
 const EDIT_SHOWCASE = {
-  main: '/media/sparkart-edit-main-20260307.avif?v=20260307-1',
-  reference: '/media/sparkart-edit-reference-20260307.webp?v=20260307-1',
-  result: '/media/sparkart-edit-result-20260307.png?v=20260307-1',
+  main: '/media/sparkart-edit-main-20260627.avif?v=20260627-1',
+  reference: '/media/sparkart-edit-reference-20260627.avif?v=20260627-1',
+  result: '/media/sparkart-edit-result-20260627.png?v=20260627-1',
 }
 
-const EDIT_SHOWCASE_PROMPT = 'メイン画像の女と参考画像の女がキス'
+const EDIT_SHOWCASE_PROMPT = 'メイン画像の女と参考画像の女が手をつなぐ'
 const EDIT_SHOWCASE_ANGLE = 'アングル　上30度　中距離'
 const GALLERY_ITEMS = [
   {
-    src: '/media/sparkart-gallery-angle-down30.png?v=20260307-1',
+    src: '/media/sparkart-gallery-angle-down30-20260627.png?v=20260627-1',
     label: 'アングル下30度の例',
     alt: 'アングル下30度の生成例',
   },
   {
-    src: '/media/sparkart-gallery-combo.png?v=20260307-1',
+    src: '/media/sparkart-gallery-combo-20260627.png?v=20260627-1',
     label: '別の画像と組み合わせた例',
     alt: '別の画像と組み合わせた生成例',
   },
 ]
 
 const HERO_ORBIT_VIDEOS = [
-  '/media/sparkart-orbit-19.mp4?v=20260307-4',
-  '/media/sparkart-orbit-18.mp4?v=20260307-4',
-  '/media/sparkart-orbit-16.mp4?v=20260307-4',
-  '/media/sparkart-orbit-15.mp4?v=20260307-4',
-  '/media/sparkart-orbit-14.mp4?v=20260307-4',
-  '/media/sparkart-orbit-13.mp4?v=20260307-4',
-  '/media/sparkart-orbit-12.mp4?v=20260307-4',
-  '/media/sparkart-orbit-11.mp4?v=20260307-4',
+  '/media/sparkart-lp-banner-1.mp4?v=20260627-1',
+  '/media/sparkart-lp-banner-2.mp4?v=20260627-1',
+  '/media/sparkart-lp-banner-3.mp4?v=20260627-1',
+  '/media/sparkart-lp-banner-4.mp4?v=20260627-1',
+  '/media/sparkart-lp-banner-5.mp4?v=20260627-1',
+  '/media/sparkart-lp-banner-6.mp4?v=20260627-1',
 ]
 
 const ENGINE_FEATURES = [
@@ -223,32 +221,29 @@ export function GuestIntro({ mode: _mode, onSignIn }: GuestIntroProps) {
         </div>
       </section>
 
-      <section className='sparkart-qa'>
-        <div className='sparkart-qa__head'>
-          <p>SparkMotion / SparkArt</p>
-          <h2>Q&A</h2>
-        </div>
-
-        <div className='sparkart-qa__bubble sparkart-qa__bubble--q'>
-          <span>Q</span>
-          <p>SparkArtとSparkMotionの大きな違いは何ですか？</p>
-        </div>
-
-        <div className='sparkart-qa__bubble sparkart-qa__bubble--a'>
-          <span>A</span>
+      <section className='pulse-faq'>
+        <div className='pulse-faq__head'>
+          <p>RECOMMENDED</p>
+          <h2>こんな人におすすめ</h2>
           <p>
-            どちらもそれぞれ特徴があります。SparkMotionは動画の安定感に強みがあり、SparkArtはより多機能なモデルで自由度が高いです。
+            動画クリエイター、漫画家、イラストレーターの資料作成や素材生成におすすめです。
+            画像から動画を作ったり、構図やアングル違いのイメージをすぐ確認できます。
           </p>
         </div>
-
-        <a
-          className='sparkart-qa__link'
-          href='https://sparkmotion.work/'
-          target='_blank'
-          rel='noreferrer'
-        >
-          SparkMotionを見る
-        </a>
+        <div className='pulse-faq__grid'>
+          <article className='pulse-faq__item'>
+            <h3>動画クリエイター</h3>
+            <p>企画段階のイメージ作り、短尺動画の素材生成、動きの確認に使えます。</p>
+          </article>
+          <article className='pulse-faq__item'>
+            <h3>漫画家・イラストレーター</h3>
+            <p>構図、ポーズ、アングル違いの参考資料をすばやく作成できます。</p>
+          </article>
+          <article className='pulse-faq__item'>
+            <h3>作品づくりの補助</h3>
+            <p>キャラクターやシーンのアイデア出し、SNS投稿用の素材作成にも向いています。</p>
+          </article>
+        </div>
       </section>
 
       <section className='pulse-faq'>
@@ -304,6 +299,12 @@ export function GuestIntro({ mode: _mode, onSignIn }: GuestIntroProps) {
           </p>
         </article>
       </section>
+
+      <div className='pulse-legal-link'>
+        <a className='ghost-button' href='/tokushoho'>
+          特定商取引法に基づく表記
+        </a>
+      </div>
     </div>
   )
 }

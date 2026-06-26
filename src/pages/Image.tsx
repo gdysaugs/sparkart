@@ -27,7 +27,7 @@ const FIXED_STEPS = 4
 const FIXED_CFG = 1
 const FIXED_ANGLE_STRENGTH = 0
 const OAUTH_REDIRECT_URL = getOAuthRedirectUrl()
-const COIN_PURCHASE_URL = 'https://checkoutcoins2.win/purchase.html'
+const COIN_PURCHASE_URL = '/purchase'
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 

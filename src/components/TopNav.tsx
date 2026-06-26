@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 
 const SPARKBEAT_URL = 'https://sparkbeat.org/'
-const COIN_PURCHASE_URL = 'https://checkoutcoins2.win/purchase.html'
+const COIN_PURCHASE_URL = '/purchase'
 const SPARKMOTION_URL = 'https://sparkmotion.work/'
 const SPARKHEART_URL = 'https://sparkheart.uk/'
 
@@ -16,9 +16,9 @@ export function TopNav() {
 
   return (
     <header className='top-nav'>
-      <div className='top-nav__brand'>
+      <Link className='top-nav__brand' to='/video' onClick={() => setMenuOpen(false)}>
         <span className='top-nav__title'>Spark Art</span>
-      </div>
+      </Link>
       <button
         type='button'
         className={`top-nav__toggle${menuOpen ? ' is-open' : ''}`}
@@ -32,7 +32,7 @@ export function TopNav() {
         <span />
       </button>
       <nav id='top-nav-menu' className={`top-nav__links${menuOpen ? ' is-open' : ''}`}>
-        <a className='top-nav__link' href={COIN_PURCHASE_URL} target='_blank' rel='noreferrer' onClick={() => setMenuOpen(false)}>
+        <a className='top-nav__link' href={COIN_PURCHASE_URL} onClick={() => setMenuOpen(false)}>
           コインを購入する
         </a>
         <a className='top-nav__link' href={SPARKBEAT_URL} target='_blank' rel='noreferrer' onClick={() => setMenuOpen(false)}>

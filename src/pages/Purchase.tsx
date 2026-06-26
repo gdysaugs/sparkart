@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { isAuthConfigured, signOutSafely, supabase } from '../lib/supabaseClient'
 import { PURCHASE_PLANS } from '../lib/purchasePlans'
@@ -22,6 +22,7 @@ export function Purchase() {
   const [bonusCanClaim, setBonusCanClaim] = useState(false)
   const [bonusNextEligibleAt, setBonusNextEligibleAt] = useState<string | null>(null)
   const [bonusClaiming, setBonusClaiming] = useState(false)
+  const confirmedCheckoutRef = useRef('')
 
   const accessToken = session?.access_token ?? ''
 
@@ -119,6 +120,61 @@ export function Purchase() {
     void fetchTickets(accessToken)
     void fetchDailyBonus(accessToken)
   }, [accessToken, fetchDailyBonus, fetchTickets, session])
+
+  useEffect(() => {
+    if (!session || !accessToken) return
+    const url = new URL(window.location.href)
+    const checkoutResult = url.searchParams.get('checkout')
+    const checkoutSessionId = url.searchParams.get('session_id')
+
+    const cleanCheckoutParams = () => {
+      const cleaned = new URL(window.location.href)
+      cleaned.searchParams.delete('checkout')
+      cleaned.searchParams.delete('session_id')
+      window.history.replaceState({}, document.title, cleaned.toString())
+    }
+
+    if (checkoutResult === 'cancel') {
+      setPurchaseStatus('idle')
+      setPurchaseMessage('購入をキャンセルしました。')
+      cleanCheckoutParams()
+      return
+    }
+
+    if (checkoutResult !== 'success' || !checkoutSessionId) return
+    if (confirmedCheckoutRef.current === checkoutSessionId) return
+    confirmedCheckoutRef.current = checkoutSessionId
+
+    const confirmCheckout = async () => {
+      setPurchaseStatus('loading')
+      setPurchaseMessage('購入を確認中...')
+      const res = await fetch('/api/stripe/confirm', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ session_id: checkoutSessionId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setPurchaseStatus('error')
+        setPurchaseMessage(data?.error || '購入確認に失敗しました。')
+        return
+      }
+      setPurchaseStatus('idle')
+      setPurchaseMessage(data?.alreadyProcessed ? '購入は反映済みです。' : '購入が完了しました。コインを付与しました。')
+      const nextTickets = Number(data?.tickets ?? data?.coins)
+      if (Number.isFinite(nextTickets)) {
+        setTicketCount(nextTickets)
+      } else {
+        await fetchTickets(accessToken)
+      }
+      cleanCheckoutParams()
+    }
+
+    void confirmCheckout()
+  }, [accessToken, fetchTickets, session])
 
   const handleGoogleSignIn = async () => {
     if (!supabase || !isAuthConfigured) {
@@ -223,7 +279,7 @@ export function Purchase() {
         await fetchTickets(accessToken)
       }
       setBonusStatus('idle')
-      setBonusMessage('ログインボーナスを受け取りました。（+15）')
+      setBonusMessage('ログインボーナスを受け取りました。（+1）')
     } else {
       setBonusStatus('idle')
       setBonusMessage(
@@ -277,7 +333,7 @@ export function Purchase() {
               </div>
               <div className="daily-bonus">
                 <div className="daily-bonus__meta">
-                  <strong>ログインボーナス（+15）</strong>
+                  <strong>ログインボーナス（+1）</strong>
                   {bonusStatus === 'loading' && <span>状態を確認中...</span>}
                   {bonusStatus !== 'loading' && bonusCanClaim && <span>今すぐ受け取れます</span>}
                   {bonusStatus !== 'loading' && !bonusCanClaim && bonusNextEligibleAt && (
