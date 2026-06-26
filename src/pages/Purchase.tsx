@@ -17,11 +17,6 @@ export function Purchase() {
   const [ticketMessage, setTicketMessage] = useState('')
   const [purchaseStatus, setPurchaseStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [purchaseMessage, setPurchaseMessage] = useState('')
-  const [bonusStatus, setBonusStatus] = useState<'idle' | 'loading' | 'error'>('idle')
-  const [bonusMessage, setBonusMessage] = useState('')
-  const [bonusCanClaim, setBonusCanClaim] = useState(false)
-  const [bonusNextEligibleAt, setBonusNextEligibleAt] = useState<string | null>(null)
-  const [bonusClaiming, setBonusClaiming] = useState(false)
   const confirmedCheckoutRef = useRef('')
 
   const accessToken = session?.access_token ?? ''
@@ -88,38 +83,15 @@ export function Purchase() {
     setTicketCount(Number(data?.tickets ?? 0))
   }, [])
 
-  const fetchDailyBonus = useCallback(async (token: string) => {
-    if (!token) return
-    setBonusStatus('loading')
-    setBonusMessage('')
-    const res = await fetch('/api/daily_bonus', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      setBonusStatus('error')
-      setBonusMessage(data?.error || 'ログインボーナス状態の取得に失敗しました。')
-      return
-    }
-    setBonusStatus('idle')
-    setBonusCanClaim(Boolean(data?.canClaim))
-    setBonusNextEligibleAt(typeof data?.nextEligibleAt === 'string' ? data.nextEligibleAt : null)
-  }, [])
-
   useEffect(() => {
     if (!session || !accessToken) {
       setTicketCount(null)
       setTicketStatus('idle')
       setTicketMessage('')
-      setBonusStatus('idle')
-      setBonusMessage('')
-      setBonusCanClaim(false)
-      setBonusNextEligibleAt(null)
       return
     }
     void fetchTickets(accessToken)
-    void fetchDailyBonus(accessToken)
-  }, [accessToken, fetchDailyBonus, fetchTickets, session])
+  }, [accessToken, fetchTickets, session])
 
   useEffect(() => {
     if (!session || !accessToken) return
@@ -208,10 +180,6 @@ export function Purchase() {
     setTicketCount(null)
     setTicketStatus('idle')
     setTicketMessage('')
-    setBonusStatus('idle')
-    setBonusMessage('')
-    setBonusCanClaim(false)
-    setBonusNextEligibleAt(null)
     setAuthStatus('idle')
     setAuthMessage('')
   }
@@ -239,58 +207,6 @@ export function Purchase() {
       return
     }
     window.location.assign(data.url)
-  }
-
-  const formatDateTime = (value: string | null) => {
-    if (!value) return ''
-    const date = new Date(value)
-    if (!Number.isFinite(date.getTime())) return ''
-    return date.toLocaleString('ja-JP', { hour12: false })
-  }
-
-  const handleClaimDailyBonus = async () => {
-    if (!session || !accessToken || bonusClaiming) return
-    setBonusClaiming(true)
-    setBonusMessage('')
-    const res = await fetch('/api/daily_bonus', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      setBonusStatus('error')
-      setBonusMessage(data?.error || 'ログインボーナスの受取に失敗しました。')
-      setBonusClaiming(false)
-      return
-    }
-
-    const granted = Boolean(data?.granted)
-    const nextEligibleAt = typeof data?.nextEligibleAt === 'string' ? data.nextEligibleAt : null
-    setBonusNextEligibleAt(nextEligibleAt)
-    setBonusCanClaim(false)
-
-    if (granted) {
-      const nextTickets = Number(data?.ticketsLeft)
-      if (Number.isFinite(nextTickets)) {
-        setTicketCount(nextTickets)
-      } else {
-        await fetchTickets(accessToken)
-      }
-      setBonusStatus('idle')
-      setBonusMessage('ログインボーナスを受け取りました。（+1）')
-    } else {
-      setBonusStatus('idle')
-      setBonusMessage(
-        nextEligibleAt
-          ? `まだ受け取れません。次回: ${formatDateTime(nextEligibleAt)}`
-          : 'まだ受け取れません。',
-      )
-    }
-
-    await fetchDailyBonus(accessToken)
-    setBonusClaiming(false)
   }
 
   return (
@@ -331,25 +247,6 @@ export function Purchase() {
                 {ticketStatus !== 'loading' && `あなたの残りコイン保有数${ticketCount ?? 0}枚`}
                 {ticketStatus === 'error' && ticketMessage ? ` / ${ticketMessage}` : ''}
               </div>
-              <div className="daily-bonus">
-                <div className="daily-bonus__meta">
-                  <strong>ログインボーナス（+1）</strong>
-                  {bonusStatus === 'loading' && <span>状態を確認中...</span>}
-                  {bonusStatus !== 'loading' && bonusCanClaim && <span>今すぐ受け取れます</span>}
-                  {bonusStatus !== 'loading' && !bonusCanClaim && bonusNextEligibleAt && (
-                    <span>次回受取: {formatDateTime(bonusNextEligibleAt)}</span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={handleClaimDailyBonus}
-                  disabled={bonusClaiming || bonusStatus === 'loading' || !bonusCanClaim}
-                >
-                  {bonusClaiming ? '受取中...' : '受け取る'}
-                </button>
-              </div>
-              {bonusMessage && <div className="ticket-message">{bonusMessage}</div>}
             </>
           )}
         </section>
