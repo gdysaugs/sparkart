@@ -17,7 +17,7 @@ const DEFAULT_QWEN_EDIT_ENDPOINT = 'https://api.runpod.ai/v2/h7p0hwtyzvndp5'
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_PROMPT_LENGTH = 1000
 const MIN_DIMENSION = 256
-const MAX_DIMENSION = 768
+const MAX_DIMENSION = 1024
 const SIGNUP_TICKET_GRANT = 5
 
 const jsonResponse = (body: unknown, status = 200, headers: HeadersInit = {}) =>
@@ -651,8 +651,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       referenceBase64 = imageBase64
     }
 
-    const width = clamp(toInt(input.width, 768), MIN_DIMENSION, MAX_DIMENSION)
-    const height = clamp(toInt(input.height, 768), MIN_DIMENSION, MAX_DIMENSION)
+    const width = clamp(toInt(input.width, 1024), MIN_DIMENSION, MAX_DIMENSION)
+    const height = clamp(toInt(input.height, 1024), MIN_DIMENSION, MAX_DIMENSION)
     const steps = clamp(toInt(input.steps, 4), 1, 12)
     const cfg = Number(input.cfg ?? input.guidance_scale ?? 1)
     const seed = Boolean(input.randomize_seed)

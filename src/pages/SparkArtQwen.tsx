@@ -3,8 +3,8 @@ import './sparkart-qwen.css'
 
 const API_ENDPOINT = '/api/qwen_sparkart'
 const REF_COUNT = 1
-const PREPROCESS_MAX_SIZE = 768
-const DEFAULT_DIMENSION = 768
+const PREPROCESS_MAX_SIZE = 1024
+const DEFAULT_DIMENSION = 1024
 const DEFAULT_CFG = 1
 const CFG_MIN = 0.1
 const CFG_MAX = 2
