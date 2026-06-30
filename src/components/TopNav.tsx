@@ -5,6 +5,7 @@ const SPARKBEAT_URL = 'https://sparkbeat.org/'
 const COIN_PURCHASE_URL = '/purchase'
 const SPARKMOTION_URL = 'https://sparkmotion.work/'
 const SPARKHEART_URL = 'https://sparkheart.uk/'
+const SPARKZEUS_URL = 'https://sparkzeus.uk/'
 
 export function TopNav() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -34,6 +35,9 @@ export function TopNav() {
       <nav id='top-nav-menu' className={`top-nav__links${menuOpen ? ' is-open' : ''}`}>
         <a className='top-nav__link' href={COIN_PURCHASE_URL} onClick={() => setMenuOpen(false)}>
           コインを購入する
+        </a>
+        <a className='top-nav__link' href={SPARKZEUS_URL} target='_blank' rel='noreferrer' onClick={() => setMenuOpen(false)}>
+          SparkZeusを使う
         </a>
         <a className='top-nav__link' href={SPARKBEAT_URL} target='_blank' rel='noreferrer' onClick={() => setMenuOpen(false)}>
           SparkBeatを使う
